@@ -40,252 +40,196 @@
 #include "vfs_config.h"
 
 #include "stdio.h"
+#include "unistd.h"
 #include "errno.h"
 #include "fs/fs.h"
 #include "stdlib.h"
-#include "inode/inode.h"
+#include "fs/vnode.h"
 #include "fs_other.h"
-/****************************************************************************
- * Pre-processor Definitions
- ****************************************************************************/
-
-#undef FS_HAVE_WRITABLE_MOUNTPOINT
-#if !defined(CONFIG_DISABLE_MOUNTPOINT) && defined(CONFIG_FS_WRITABLE) && \
-    CONFIG_NFILE_STREAMS > 0
-#  define FS_HAVE_WRITABLE_MOUNTPOINT 1
-#endif
-
-#undef FS_HAVE_PSEUDOFS_OPERATIONS
-#if !defined(CONFIG_DISABLE_PSEUDOFS_OPERATIONS) && CONFIG_NFILE_STREAMS > 0
-#  define FS_HAVE_PSEUDOFS_OPERATIONS 1
-#endif
-
-#undef FS_HAVE_RENAME
-#if defined(FS_HAVE_WRITABLE_MOUNTPOINT) || defined(FS_HAVE_PSEUDOFS_OPERATIONS)
-#  define FS_HAVE_RENAME 1
-#endif
-
-#ifdef FS_HAVE_RENAME
-
+#include "limits.h"
+#include "fs/fs_operation.h"
 /****************************************************************************
  * Public Functions
  ****************************************************************************/
-
-int do_rename(int oldfd, FAR const char *oldpath, int newfd, FAR const char *newpath)
+static int check_rename_target(struct Vnode *old_vnode, struct Vnode *old_parent_vnode,
+    struct Vnode *new_vnode, struct Vnode *new_parent_vnode)
 {
-  FAR struct inode *oldinode;
-  FAR struct inode *newinode;
-  const char       *oldrelpath      = NULL;
-  char             *fulloldpath     = NULL;
-  char             *fulloldpath_bak = NULL;
-  char             *fullnewpath     = NULL;
-  char             *fullnewpath_bak = NULL;
-#ifndef CONFIG_DISABLE_MOUNTPOINT
-  const char       *newrelpath      = NULL;
-#endif
-  int               errcode         = ENOERR;
-  int               ret;
-  struct inode_search_s old_desc, new_desc;
-
-  /* Ignore paths that are interpreted as the root directory which has no name
-   * and cannot be moved
-   */
-
-  if (!oldpath || *oldpath == '\0' ||
-      !newpath || *newpath == '\0')
+  if (old_vnode == NULL || old_parent_vnode == NULL ||
+      new_parent_vnode == NULL || new_parent_vnode->type != VNODE_TYPE_DIR)
     {
-      errcode = EINVAL;
+      return -ENOENT;
+    }
+  if (old_vnode->type != VNODE_TYPE_DIR && old_vnode->type != VNODE_TYPE_REG)
+    {
+      return -EACCES;
+    }
+  if (new_vnode != NULL && new_vnode->type != old_vnode->type)
+    {
+      if (new_vnode->type == VNODE_TYPE_DIR)
+        {
+          return -EISDIR;
+        }
+      return -ENOTDIR;
+    }
+  if (new_vnode != NULL && new_vnode->useCount != 0)
+    {
+      return -EBUSY;
+    }
+
+  if (VfsVnodePermissionCheck(old_parent_vnode, WRITE_OP)
+      || VfsVnodePermissionCheck(new_parent_vnode, WRITE_OP))
+    {
+      return -EACCES;
+    }
+
+  if (old_parent_vnode->originMount != new_parent_vnode->originMount)
+    {
+      return -EXDEV;
+    }
+  if ((old_vnode->flag & VNODE_FLAG_MOUNT_NEW)
+       || (old_vnode->flag & VNODE_FLAG_MOUNT_ORIGIN))
+    {
+      return -EBUSY;
+    }
+  if (new_vnode != NULL && ((new_vnode->flag & VNODE_FLAG_MOUNT_NEW)
+      || (new_vnode->flag & VNODE_FLAG_MOUNT_ORIGIN)))
+    {
+      return -EBUSY;
+    }
+
+  return OK;
+}
+
+static int check_path_invalid(const char *fulloldpath, const char *fullnewpath)
+{
+  char cwd[PATH_MAX];
+  char *pret = getcwd(cwd, PATH_MAX);
+  ssize_t len = strlen(fulloldpath);
+  if (pret != NULL)
+    {
+      if (!strcmp(fulloldpath, cwd))
+        {
+          return -EBUSY;
+        }
+    }
+
+  if (strncmp(fulloldpath, fullnewpath, len))
+    {
+      return OK;
+    }
+
+  if (fullnewpath[len] != '/')
+    {
+      return OK;
+    }
+
+  return -EINVAL;
+}
+
+int do_rename(int oldfd, const char *oldpath, int newfd, const char *newpath)
+{
+  struct Vnode *old_parent_vnode = NULL;
+  struct Vnode *new_parent_vnode = NULL;
+  struct Vnode *old_vnode = NULL;
+  struct Vnode *new_vnode = NULL;
+  char *fulloldpath = NULL;
+  char *fullnewpath = NULL;
+  char *oldname = NULL;
+  char *newname = NULL;
+  int ret;
+  if (!oldpath || *oldpath == '\0' || !newpath || *newpath == '\0')
+    {
+      ret = -EINVAL;
       goto errout;
     }
 
   ret = vfs_normalize_pathat(oldfd, oldpath, &fulloldpath);
   if (ret < 0)
-   {
-     errcode = -ret;
-     goto errout;
-   }
-  fulloldpath_bak = fulloldpath;
+    {
+      goto errout;
+    }
 
   ret = vfs_normalize_pathat(newfd, newpath, &fullnewpath);
   if (ret < 0)
-   {
-     errcode = -ret;
-     goto errout_with_path;
-   }
-  fullnewpath_bak = fullnewpath;
+    {
+      goto errout_with_oldpath;
+    }
+  oldname = strrchr(fulloldpath, '/') + 1;
+  newname = strrchr(fullnewpath, '/') + 1;
+  ret = check_path_invalid(fulloldpath, fullnewpath);
+  if (ret != OK)
+    {
+      goto errout_with_newpath;
+    }
 
-  /* Get an inode that includes the oldpath */
-  SETUP_SEARCH(&old_desc, fulloldpath, false);
-  ret = inode_find(&old_desc);
+  VnodeHold();
+  ret = VnodeLookup(fulloldpath, &old_vnode, 0);
   if (ret < 0)
     {
-      errcode = EACCES;
-      free(fullnewpath_bak);
-      goto errout_with_path;
+      goto errout_with_vnode;
     }
-  oldinode = old_desc.node;
-  oldrelpath = old_desc.relpath;
-
-#ifndef CONFIG_DISABLE_MOUNTPOINT
-  /* Verify that the old inode is a valid mountpoint. */
-
-  if (INODE_IS_MOUNTPT(oldinode) && oldinode->u.i_mops)
+  old_parent_vnode = old_vnode->parent;
+  ret = VnodeLookup(fullnewpath, &new_vnode, 0);
+  if (ret == OK)
     {
-      /* Get an inode for the new relpath -- it should like on the same
-       * mountpoint
-       */
-      SETUP_SEARCH(&new_desc, fullnewpath, false);
-      ret = inode_find(&new_desc);
-      if (ret < 0)
-        {
-          errcode = EACCES;
-          goto errout_with_oldinode;
-        }
-      newinode = new_desc.node;
-      newrelpath = new_desc.relpath;
-
-      /* Verify that the two paths lie on the same mountpoint inode */
-
-      if (oldinode != newinode)
-        {
-          errcode = EXDEV;
-          goto errout_with_newinode;
-        }
-
-      /* Perform the rename operation using the relative paths
-       * at the common mountpoint.
-       */
-
-      if (oldinode->u.i_mops->rename)
-        {
-          ret = oldinode->u.i_mops->rename(oldinode, oldrelpath, newrelpath);
-          if (ret < 0)
-            {
-              errcode = -ret;
-              goto errout_with_newinode;
-            }
-        }
-      else
-        {
-          errcode = ENOSYS;
-          goto errout_with_newinode;
-        }
-
-      /* Successfully renamed */
-
-      inode_release(newinode);
+      new_parent_vnode = new_vnode->parent;
     }
   else
-#endif
-#ifndef CONFIG_DISABLE_PSEUDOFS_OPERATIONS
     {
-      /* Create a new, empty inode at the destination location */
-      if (VfsPermissionCheck(old_desc.parent->i_uid, old_desc.parent->i_gid,
-                              old_desc.parent->i_mode, EXEC_OP | WRITE_OP))
-        {
-          ret = EACCES;
-          goto errout_with_oldinode;
-        }
-      SETUP_SEARCH(&new_desc, fullnewpath, false);
-      ret = inode_find(&new_desc);
-      if (ret < 0)
-        {
-          errcode = EACCES;
-          goto errout_with_oldinode;
-        }
-      newinode = new_desc.node;
-      newrelpath = new_desc.relpath;
-
-      if (VfsPermissionCheck(new_desc.parent->i_uid, new_desc.parent->i_gid,
-                              new_desc.parent->i_mode, EXEC_OP | WRITE_OP))
-        {
-          ret = EACCES;
-          goto errout_with_oldinode;
-        }
-      inode_semtake();
-      ret = inode_reserve(fullnewpath, &newinode);
-      if (ret < 0)
-        {
-          /* It is an error if a node at newpath already exists in the tree
-           * OR if we fail to allocate memory for the new inode (and possibly
-           * any new intermediate path segments).
-           */
-
-          inode_semgive();
-          errcode = EEXIST;
-          goto errout_with_oldinode;
-        }
-
-      /* Copy the inode state from the old inode to the newly allocated inode */
-
-      newinode->i_child   = oldinode->i_child;   /* Link to lower level inode */
-      newinode->i_flags   = oldinode->i_flags;   /* Flags for inode */
-      newinode->u.i_ops   = oldinode->u.i_ops;   /* Inode operations */
-#ifdef LOSCFG_FILE_MODE
-      newinode->i_mode    = oldinode->i_mode;    /* Access mode flags */
-#endif
-      newinode->i_private = oldinode->i_private; /* Per inode driver private data */
-
-      /* We now have two copies of the inode.  One with a reference count of
-       * zero (the new one), and one that may have multiple references
-       * including one by this logic (the old one)
-       *
-       * Remove the old inode.  Because we hold a reference count on the
-       * inode, it will not be deleted now.  It will be deleted when all of
-       * the references to to the inode have been released (perhaps when
-       * inode_release() is called below).  inode_remove() should return
-       * -EBUSY to indicate that the inode was not deleted now.
-       */
-
-      ret = inode_remove(fulloldpath);
-      if (ret < 0 && ret != -EBUSY)
-        {
-          /* Remove the new node we just recreated */
-
-          (void)inode_remove(fullnewpath);
-          inode_semgive();
-
-          errcode = -ret;
-          goto errout_with_oldinode;
-        }
-
-      /* Remove all of the children from the unlinked inode */
-
-      oldinode->i_child = NULL;
-      inode_semgive();
+      new_parent_vnode = new_vnode;
+      new_vnode = NULL;
     }
-#else
+  ret = check_rename_target(old_vnode, old_parent_vnode, new_vnode, new_parent_vnode);
+  if (ret != OK)
     {
-      errcode = ENXIO;
-      goto errout_with_oldinode;
+      goto errout_with_vnode;
     }
-#endif
-
-  /* rename file page cache mapping if necessary */
+  if (old_vnode == new_vnode)
+    {
+      VnodeDrop();
+      free(fulloldpath);
+      free(fullnewpath);
+      return OK;
+    }
+  if (!old_vnode->vop || !old_vnode->vop->Rename)
+    {
+      ret = -ENOSYS;
+      goto errout_with_vnode;
+    }
+  ret = old_vnode->vop->Rename(old_vnode, new_parent_vnode, oldname, newname);
+  if (ret < 0)
+    {
+      goto errout_with_vnode;
+    }
+  VnodeFree(new_vnode);
+  VnodePathCacheFree(old_vnode);
+  PathCacheAlloc(new_parent_vnode, old_vnode, newname, strlen(newname));
+  VnodeDrop();
+  ret = update_file_path(fulloldpath, fullnewpath);
+  if (ret != OK)
+    {
+      PRINT_ERR("rename change file path failed, something bad might happped.\n");
+    }
+  /* Successfully renamed */
 
   rename_mapping(fulloldpath, fullnewpath);
 
-  /* Successfully renamed */
-
-  inode_release(oldinode);
-  free(fulloldpath_bak);
-  free(fullnewpath_bak);
+  free(fulloldpath);
+  free(fullnewpath);
 
   return OK;
 
-#ifndef CONFIG_DISABLE_MOUNTPOINT
-errout_with_newinode:
-  inode_release(newinode);
-#endif
-errout_with_oldinode:
-  inode_release(oldinode);
-  free(fullnewpath_bak);
-errout_with_path:
-  free(fulloldpath_bak);
+errout_with_vnode:
+  VnodeDrop();
+errout_with_newpath:
+  free(fullnewpath);
+errout_with_oldpath:
+  free(fulloldpath);
 errout:
-  set_errno(errcode);
+  set_errno(-ret);
   return VFS_ERROR;
 }
+
 
 /****************************************************************************
  * Name: rename
@@ -294,7 +238,7 @@ errout:
  *
  ****************************************************************************/
 
-int rename(FAR const char *oldpath, FAR const char *newpath)
+int rename(const char *oldpath, const char *newpath)
 {
   return do_rename(AT_FDCWD, oldpath, AT_FDCWD, newpath);
 }
@@ -306,9 +250,7 @@ int rename(FAR const char *oldpath, FAR const char *newpath)
  *
  ****************************************************************************/
 
-int renameat(int oldfd, FAR const char *oldpath, int newdfd, FAR const char *newpath)
+int renameat(int oldfd, const char *oldpath, int newdfd, const char *newpath)
 {
   return do_rename(oldfd, oldpath, newdfd, newpath);
 }
-
-#endif /* FS_HAVE_RENAME */

@@ -47,6 +47,7 @@
 
 #include <fs/fs.h>
 
+#include "fs/vnode.h"
 #include "pipe_common.h"
 #include "stdio.h"
 #if CONFIG_DEV_PIPE_SIZE > 0
@@ -65,16 +66,16 @@
  * Private Function Prototypes
  ****************************************************************************/
 
-static int pipe_close(FAR struct file *filep);
+static int pipe_close(struct file *filep);
 #ifndef CONFIG_DISABLE_PSEUDOFS_OPERATIONS
-static int pipe_unlink(FAR struct inode *priv);
+int pipe_unlink(struct Vnode *priv);
 #endif
 
 /****************************************************************************
  * Private Data
  ****************************************************************************/
 
-static ssize_t pipe_map(FAR struct file* filep, FAR LosVmMapRegion *region)
+static ssize_t pipe_map(struct file* filep, LosVmMapRegion *region)
 {
   PRINTK("%s %d, mmap is not support\n", __FUNCTION__, __LINE__);
   return 0;
@@ -82,16 +83,16 @@ static ssize_t pipe_map(FAR struct file* filep, FAR LosVmMapRegion *region)
 
 static const struct file_operations_vfs pipe_fops =
 {
-  pipecommon_open,   /* open */
-  pipe_close,        /* close */
-  pipecommon_read,   /* read */
-  pipecommon_write,  /* write */
-  NULL,              /* seek */
-  NULL,              /* ioctl */
-  pipe_map,          /* mmap */
-  pipecommon_poll,   /* poll */
+  .open = pipecommon_open,      /* open */
+  .close = pipe_close,          /* close */
+  .read = pipecommon_read,      /* read */
+  .write = pipecommon_write,    /* write */
+  .seek = NULL,                 /* seek */
+  .ioctl = NULL,                /* ioctl */
+  .mmap = pipe_map,             /* mmap */
+  .poll = pipecommon_poll,      /* poll */
 #ifndef CONFIG_DISABLE_PSEUDOFS_OPERATIONS
-  pipe_unlink,       /* unlink */
+  .unlink = pipe_unlink,        /* unlink */
 #endif
 };
 
@@ -145,10 +146,10 @@ static inline void pipe_free(int pipeno)
  * Name: pipe_close
  ****************************************************************************/
 
-static int pipe_close(FAR struct file *filep)
+static int pipe_close(struct file *filep)
 {
-  FAR struct inode *inode    = filep->f_inode;
-  FAR struct pipe_dev_s *dev = inode->i_private;
+  struct Vnode *vnode    = filep->f_vnode;
+  struct pipe_dev_s *dev = (struct pipe_dev_s *)((struct drv_data *)vnode->data)->priv;
   int ret;
 
   if (dev == NULL)
@@ -159,7 +160,7 @@ static int pipe_close(FAR struct file *filep)
   /* Perform common close operations */
 
   ret = pipecommon_close(filep);
-  if (ret == 0 && inode->i_crefs == 1)
+  if (ret == 0 && vnode->useCount <= 1)
     {
       /* Release the pipe when there are no further open references to it. */
 
@@ -174,9 +175,9 @@ static int pipe_close(FAR struct file *filep)
  ****************************************************************************/
 
 #ifndef CONFIG_DISABLE_PSEUDOFS_OPERATIONS
-static int pipe_unlink(FAR struct inode *priv)
+ int pipe_unlink(struct Vnode *vnode)
 {
-  FAR struct pipe_dev_s *dev = priv->i_private;
+  struct pipe_dev_s *dev = ((struct drv_data *)vnode->data)->priv;
   uint8_t pipeno = 0;
   int ret;
 
@@ -185,8 +186,8 @@ static int pipe_unlink(FAR struct inode *priv)
         pipeno = dev->d_pipeno;
     }
   /* Perform common close operations */
-  ret = pipecommon_unlink(priv);
-  if (ret == 0 && priv->i_crefs == 1)
+  ret = pipecommon_unlink(vnode);
+  if (ret == 0)
     {
       (void)sem_wait(&g_pipesem);
       g_pipecreated &= ~(1 << pipeno);
@@ -198,7 +199,6 @@ static int pipe_unlink(FAR struct inode *priv)
 }
 #endif
 
-
 /****************************************************************************
  * Public Functions
  ****************************************************************************/
@@ -207,7 +207,7 @@ static int pipe_unlink(FAR struct inode *priv)
  * Name: pipe2
  *
  * Description:
- *   pipe() creates a pair of file descriptors, pointing to a pipe inode,
+ *   pipe() creates a pair of file descriptors, pointing to a pipe vnode,
  *   and  places them in the array pointed to by 'fd'. fd[0] is for reading,
  *   fd[1] is for writing.
  *
@@ -228,11 +228,12 @@ static int pipe_unlink(FAR struct inode *priv)
 
 int pipe(int fd[2])
 {
-  FAR struct pipe_dev_s *dev = NULL;
+  struct pipe_dev_s *dev = NULL;
   char devname[16];
   int pipeno;
   int errcode;
   int ret;
+  struct file *filep = NULL;
   size_t bufsize = 1024;
 
   /* Get exclusive access to the pipe allocation data */
@@ -276,7 +277,7 @@ int pipe(int fd[2])
 
       /* Register the pipe device */
 
-      ret = register_driver(devname, &pipe_fops, 0660, (FAR void *)dev);
+      ret = register_driver(devname, &pipe_fops, 0660, (void *)dev);
       if (ret != 0)
         {
           (void)sem_post(&g_pipesem);
@@ -308,6 +309,12 @@ int pipe(int fd[2])
       errcode = -fd[0];
       goto errout_with_wrfd;
     }
+
+  ret = fs_getfilep(fd[0], &filep);
+  filep->ops = &pipe_fops;
+
+  ret = fs_getfilep(fd[1], &filep);
+  filep->ops = &pipe_fops;
 
   return OK;
 

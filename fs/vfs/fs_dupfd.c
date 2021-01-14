@@ -47,7 +47,7 @@
 #include "fs/fs.h"
 #include "fs/file.h"
 
-#include "inode/inode.h"
+#include "fs/vnode.h"
 #include "stdlib.h"
 #include "string.h"
 #if CONFIG_NFILE_DESCRIPTORS > 0
@@ -74,19 +74,18 @@
  *
  ****************************************************************************/
 
-int file_dup(FAR struct file *filep, int minfd)
+int file_dup(struct file *filep, int minfd)
 {
   int fd2;
   int ret;
-  int err,len;
+  int err,len,rellen;
   struct file *filep2 = NULL;
   char *fullpath = NULL;
-  const char *relpath = NULL;
-  struct inode_search_s desc;
+  char *relpath = NULL;
 
   /* Verify that fd is a valid, open file descriptor */
 
-  if ((filep->f_inode == NULL) || (filep->f_path == NULL))
+  if ((filep->f_vnode == NULL) || (filep->f_path == NULL))
     {
       set_errno(EBADF);
       return VFS_ERROR;
@@ -100,12 +99,11 @@ int file_dup(FAR struct file *filep, int minfd)
       return VFS_ERROR;
     }
 
-  /* Then allocate a new file descriptor for the inode */
+  /* Then allocate a new file descriptor for the vnode */
 
-  fd2 = files_allocate(filep->f_inode, filep->f_oflags, filep->f_pos, filep->f_priv, minfd);
+  fd2 = files_allocate(filep->f_vnode, filep->f_oflags, filep->f_pos, filep->f_priv, minfd);
   if (fd2 < 0)
     {
-      inode_release(filep->f_inode);
       free(fullpath);
       set_errno(EMFILE);
       return VFS_ERROR;
@@ -114,39 +112,29 @@ int file_dup(FAR struct file *filep, int minfd)
   ret = fs_getfilep(fd2, &filep2);
 
   (void)strncpy_s(fullpath, len + 1, filep->f_path, len);
-  SETUP_SEARCH(&desc, fullpath, false);
-  if (inode_find(&desc) < 0)
+  if (filep->f_relpath != NULL)
     {
-      ret = -EACCES;
-      goto errout_with_inode;
+      rellen = strlen(filep->f_relpath);
+      relpath = (char *)zalloc(rellen + 1);
+      (void)strncpy_s(relpath, rellen + 1, filep->f_relpath, rellen);
     }
-  relpath = desc.relpath;
   filep2->f_path = fullpath;
   filep2->f_relpath = relpath;
-
-  if (filep->f_inode->u.i_mops && filep->f_inode->u.i_mops->dup)
-    {
-      ret = filep->f_inode->u.i_mops->dup(filep, filep2);
-    }
-  else
-    {
-      ret = -ENOSYS;
-    }
+  filep2->f_priv = filep->f_priv;
 
   if (ret < 0)
     {
-      goto errout_with_inode;
+      goto errout_with_vnode;
     }
 
   return fd2;
 
-errout_with_inode:
+errout_with_vnode:
   clear_fd(fd2);
-  inode_release(filep2->f_inode);
   free(fullpath);
   filep2->f_oflags  = 0;
   filep2->f_pos     = 0;
-  filep2->f_inode   = NULL;
+  filep2->f_vnode   = NULL;
   filep2->f_priv    = NULL;
   filep2->f_path    = NULL;
   filep2->f_relpath = NULL;
@@ -175,7 +163,7 @@ errout_with_inode:
 
 int fs_dupfd(int fd, int minfd)
 {
-  FAR struct file *filep;
+  struct file *filep;
 
   /* Get the file structure corresponding to the file descriptor. */
 

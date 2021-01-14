@@ -45,7 +45,7 @@
 #include "errno.h"
 #include "debug.h"
 #include "fs/fs.h"
-#include "inode/inode.h"
+#include "fs/vnode.h"
 #include "stdlib.h"
 #include "stdio.h"
 #include "console.h"
@@ -226,14 +226,11 @@ static int wait_sem_time(poll_wait_head wait, const struct timespec *time_ptr)
 
 static int file_poll(struct file *filep, poll_table *wait)
 {
-  struct inode *inode = NULL;
   int ret = -ENOSYS;
 
-  inode = filep->f_inode;
-
-  if (inode != NULL && inode->u.i_ops != NULL && inode->u.i_ops->poll != NULL)
+  if (filep->ops != NULL && filep->ops->poll != NULL)
     {
-      ret = inode->u.i_ops->poll(filep, wait);
+      ret = filep->ops->poll(filep, wait);
     }
 
   return ret;

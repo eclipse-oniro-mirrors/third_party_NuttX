@@ -48,7 +48,7 @@
 #include "sys/socket.h"
 #include "console.h"
 #include "user_copy.h"
-#include "inode/inode.h"
+#include "fs/vnode.h"
 
 /****************************************************************************
  * Public Functions
@@ -79,10 +79,8 @@
  *  values).
  *
  ****************************************************************************/
-
-ssize_t file_write(FAR struct file *filep, FAR const void *buf, size_t nbytes)
+ssize_t file_write(struct file *filep, const void *buf, size_t nbytes)
 {
-  FAR struct inode *inode;
   int ret;
   int err;
 
@@ -102,8 +100,7 @@ ssize_t file_write(FAR struct file *filep, FAR const void *buf, size_t nbytes)
 
   /* Is a driver registered? Does it support the write method? */
 
-  inode = filep->f_inode;
-  if (!inode || !inode->u.i_ops || !inode->u.i_ops->write)
+  if (!filep->ops || !filep->ops->write)
     {
       err = EBADF;
       goto errout;
@@ -111,7 +108,7 @@ ssize_t file_write(FAR struct file *filep, FAR const void *buf, size_t nbytes)
 
   /* Yes, then let the driver perform the write */
 
-  ret = inode->u.i_ops->write(filep, (const char *)buf, nbytes);
+  ret = filep->ops->write(filep, (const char *)buf, nbytes);
   if (ret < 0)
     {
       err = -ret;
@@ -161,7 +158,7 @@ errout:
  *    specified in buf, the value specified in count, or the current
  *     file offset is not suitably aligned.
  *  EIO
- *    A low-level I/O error occurred while modifying the inode.
+ *    A low-level I/O error occurred while modifying the vnode.
  *  ENOSPC
  *    The device containing the file referred to by fd has no room for
  *    the data.
@@ -173,10 +170,10 @@ errout:
  *
  ****************************************************************************/
 
-ssize_t write(int fd, FAR const void *buf, size_t nbytes)
+ssize_t write(int fd, const void *buf, size_t nbytes)
 {
 #if CONFIG_NFILE_DESCRIPTORS > 0
-  FAR struct file *filep;
+  struct file *filep;
 #endif
 
   /* Did we get a valid file descriptor? */
@@ -188,7 +185,7 @@ ssize_t write(int fd, FAR const void *buf, size_t nbytes)
       /* Write to a socket descriptor is equivalent to send with flags == 0 */
 
 #if defined(LOSCFG_NET_LWIP_SACK)
-      FAR const void *bufbak = buf;
+      const void *bufbak = buf;
       ssize_t ret;
       if (LOS_IsUserAddress((VADDR_T)(uintptr_t)buf))
         {

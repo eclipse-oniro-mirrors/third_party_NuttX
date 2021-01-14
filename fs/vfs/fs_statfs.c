@@ -42,23 +42,9 @@
 #include "sys/statfs.h"
 #include "string.h"
 #include "sched.h"
-
-#include "inode/inode.h"
+#include "fs/vnode.h"
 #include "errno.h"
 #include "stdlib.h"
-/****************************************************************************
- * Private Functions
- ****************************************************************************/
-
-/****************************************************************************
- * Name: statpseudo
- ****************************************************************************/
-
-static inline int statpseudofs(FAR struct inode *inode, FAR struct statfs *buf)
-{
-  (void)memset_s(buf, sizeof(struct statfs), 0, sizeof(struct statfs));
-  return OK;
-}
 
 /****************************************************************************
  * Public Functions
@@ -81,113 +67,62 @@ static inline int statpseudofs(FAR struct inode *inode, FAR struct statfs *buf)
  *
  ****************************************************************************/
 
-int statfs(FAR const char *path, FAR struct statfs *buf)
+int statfs(const char *path, struct statfs *buf)
 {
-  FAR struct inode *inode;
-  int              ret       = OK;
-  char             *fullpath = NULL;
-  struct inode_search_s desc;
+  struct Vnode *vnode = NULL;
+  struct Mount *mnt = NULL;
+  int ret = OK;
 
   /* Sanity checks */
-
   if (!path || !buf)
     {
-      ret = EFAULT;
+      ret = -EFAULT;
       goto errout;
     }
-
   if (!path[0])
     {
-      ret = ENOENT;
+      ret = -ENOENT;
       goto errout;
     }
-
-  ret = vfs_normalize_path((const char *)NULL, path, &fullpath);
+  /* Get an vnode for this file */
+  VnodeHold();
+  ret = VnodeLookup(path, &vnode, 0);
   if (ret < 0)
     {
-      ret = -ret;
+      VnodeDrop();
       goto errout;
     }
+  vnode->useCount++;
+  VnodeDrop();
 
-  /* Get an inode for this file */
-  SETUP_SEARCH(&desc, fullpath, false);
-  ret = inode_find(&desc);
-  if (ret < 0)
+  mnt = vnode->originMount;
+  if (mnt == NULL || mnt->ops == NULL || mnt->ops->Statfs == NULL)
     {
-      ret = EACCES;
-      free(fullpath);
-      goto errout;
-    }
-  inode = desc.node;
-
-  /* The way we handle the statfs depends on the type of inode that we
-   * are dealing with.
-   */
-
-#ifndef CONFIG_DISABLE_MOUNTPOINT
-  if (INODE_IS_MOUNTPT(inode))
-    {
-      /* The node is a file system mointpoint. Verify that the mountpoint
-       * supports the statfs() method
-       */
-
-      if (inode->u.i_mops && inode->u.i_mops->stat && inode->u.i_mops->statfs)
-        {
-          struct stat *statbuf = LOS_MemAlloc(m_aucSysMem0, sizeof(struct stat));
-          if (statbuf == NULL)
-            {
-              ret = ENOMEM;
-            }
-          else
-            {
-              /* Check whether the path is available or not */
-
-              ret = inode->u.i_mops->stat(inode, desc.relpath, statbuf);
-              if (ret == 0)
-                {
-                  /* Perform the statfs() operation */
-
-                  (void)memset_s((void *)buf, sizeof(struct statfs), 0, sizeof(struct statfs));
-                  ret = inode->u.i_mops->statfs(inode, buf);
-                }
-              (VOID)LOS_MemFree(m_aucSysMem0, statbuf);
-            }
-        }
+      ret = -ENOSYS;
+      goto errout_with_useCount;
     }
   else
-#endif
     {
-      /* The node is part of the root pseudo file system */
-
-      if (strlen(desc.relpath) > 0)
+      ret = mnt->ops->Statfs(mnt, buf);
+      if (ret < 0)
         {
-          ret = ENOENT;
-          goto errout_with_inode;
+          goto errout_with_useCount;
         }
-
-      ret = statpseudofs(inode, buf);
     }
 
-  /* Check if the statfs operation was successful */
+  VnodeHold();
+  vnode->useCount--;
+  VnodeDrop();
 
-  if (ret < 0)
-    {
-      ret = -ret;
-      goto errout_with_inode;
-    }
-
-  /* Successfully statfs'ed the file */
-
-  inode_release(inode);
-  free(fullpath);
   return OK;
 
   /* Failure conditions always set the errno appropriately */
 
-errout_with_inode:
-  inode_release(inode);
-  free(fullpath);
+errout_with_useCount:
+  VnodeHold();
+  vnode->useCount--;
+  VnodeDrop();
 errout:
-  set_errno(ret);
+  set_errno(-ret);
   return VFS_ERROR;
 }

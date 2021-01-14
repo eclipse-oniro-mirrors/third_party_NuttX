@@ -38,49 +38,11 @@
  ****************************************************************************/
 
 #include "vfs_config.h"
-
 #include "dirent.h"
 #include "errno.h"
-
 #include "fs/fs.h"
 #include "fs/dirent_fs.h"
-
-#include "inode/inode.h"
-
-/****************************************************************************
- * Private Functions
- ****************************************************************************/
-
-/****************************************************************************
- * Name: rewindpseudodir
- ****************************************************************************/
-
-static inline void rewindpseudodir(struct fs_dirent_s *idir)
-{
-  struct inode *prev;
-
-  inode_semtake();
-
-  /* Reset the position to the beginning */
-
-  prev                   = idir->u.pseudo.fd_next; /* (Save to delete later) */
-  idir->u.pseudo.fd_next = idir->fd_root->i_child; /* The next node to visit */
-  idir->fd_position      = 0;                      /* Reset position */
-
-  /* Increment the reference count on the root=next node.  We
-   * should now have two references on the inode.
-   */
-
-  idir->fd_root->i_child->i_crefs++;
-  inode_semgive();
-
-  /* Then release the reference to the old next inode */
-
-  if (prev != NULL)
-    {
-      inode_release(prev);
-    }
-}
+#include "fs/vnode.h"
 
 /****************************************************************************
  * Public Functions
@@ -102,19 +64,10 @@ static inline void rewindpseudodir(struct fs_dirent_s *idir)
  *
  ****************************************************************************/
 
-void rewinddir(FAR DIR *dirp)
+void rewinddir(DIR *dirp)
 {
   struct fs_dirent_s *idir = (struct fs_dirent_s *)dirp;
-#ifndef CONFIG_DISABLE_MOUNTPOINT
-  struct inode *inode_ptr;
-#endif
-
-  /* Verify that we were provided with a valid directory structure,
-   * A special case is when we enumerate an "empty", unused inode (fd_root
-   * == 0).  That is an inode in the pseudo-filesystem that has no
-   * operations and no children.  This is a "dangling" directory entry that
-   * has lost its children.
-   */
+  struct Vnode *vnode_ptr = NULL;
 
   if (!idir || !idir->fd_root || idir->fd_status != DIRENT_MAGIC)
     {
@@ -122,34 +75,23 @@ void rewinddir(FAR DIR *dirp)
       return;
     }
 
-  /* The way we handle the readdir depends on the type of inode
+  /* The way we handle the readdir depends on the type of vnode
    * that we are dealing with.
    */
 
-#ifndef CONFIG_DISABLE_MOUNTPOINT
-  inode_ptr = idir->fd_root;
-  if (INODE_IS_MOUNTPT(inode_ptr))
+  vnode_ptr = idir->fd_root;
+  if (vnode_ptr->vop != NULL && vnode_ptr->vop->Rewinddir != NULL)
     {
-      /* The node is a file system mointpoint. Verify that the mountpoint
-       * supports the rewinddir() method
-       */
+      /* Perform the rewinddir() operation */
 
-      if (inode_ptr->u.i_mops && inode_ptr->u.i_mops->rewinddir)
-        {
-          /* Perform the rewinddir() operation */
-
-          (void)inode_ptr->u.i_mops->rewinddir(inode_ptr, idir);
-        }
-
-      /* Reset position for telldir() */
-
-      idir->fd_position = 0;
+      vnode_ptr->vop->Rewinddir(vnode_ptr, idir);
     }
   else
-#endif
     {
-      /* The node is part of the root pseudo file system */
-
-      rewindpseudodir(idir);
+      set_errno(ENOSYS);
     }
+
+  /* Reset position for telldir() */
+
+  idir->fd_position = 0;
 }

@@ -38,85 +38,23 @@
  ****************************************************************************/
 
 #include "vfs_config.h"
-
 #include "sys/types.h"
 #include "dirent.h"
 #include "errno.h"
-
 #include "fs/fs.h"
 #include "fs/dirent_fs.h"
-
-#include "inode/inode.h"
+#include "fs/vnode.h"
 
 /****************************************************************************
  * Private Functions
  ****************************************************************************/
-
-/****************************************************************************
- * Name: seekpseudodir
- ****************************************************************************/
-
-static inline void seekpseudodir(struct fs_dirent_s *idir, off_t offset)
-{
-  struct inode *curr;
-  struct inode *prev;
-  off_t pos;
-
-  /* Determine a starting point for the seek.  If the seek
-   * is "forward" from the current position, then we will
-   * start at the current poisition.  Otherwise, we will
-   * "rewind" to the root dir.
-   */
-
-  if (offset < idir->fd_position)
-    {
-      pos  = 0;
-      curr = idir->fd_root->i_child;
-    }
-  else
-    {
-      pos  = idir->fd_position;
-      curr = idir->u.pseudo.fd_next;
-    }
-
-  /* Traverse the peer list starting at the 'root' of the
-   * the list until we find the node at 'offset".  If devices
-   * are being registered and unregistered, then this can
-   * be a very unpredictable operation.
-   */
-
-  inode_semtake();
-  for (; curr && pos != offset; pos++, curr = curr->i_peer);
-
-  /* Now get the inode to vist next time that readdir() is called */
-
-  prev                   = idir->u.pseudo.fd_next;
-  idir->u.pseudo.fd_next = curr; /* The next node to visit (might be null) */
-  idir->fd_position      = pos;  /* Might be beyond the last dirent */
-
-  if (curr)
-    {
-      /* Increment the reference count on this next node */
-
-      curr->i_crefs++;
-    }
-
-  inode_semgive();
-
-  if (prev)
-    {
-      inode_release(prev);
-    }
-}
-
 /****************************************************************************
  * Name: seekmountptdir
  ****************************************************************************/
 
-#ifndef CONFIG_DISABLE_MOUNTPOINT
 static inline void seekmountptdir(struct fs_dirent_s *idir, off_t offset)
 {
-  struct inode *inode;
+  struct Vnode *vnode;
   off_t pos;
 
   /* Determine a starting point for the seek.  If the seek
@@ -125,14 +63,14 @@ static inline void seekmountptdir(struct fs_dirent_s *idir, off_t offset)
    * "rewind" to the root dir.
    */
 
-  inode = idir->fd_root;
+  vnode = idir->fd_root;
   if (offset < idir->fd_position)
     {
-      if (inode->u.i_mops && inode->u.i_mops->rewinddir)
+      if (vnode->vop != NULL && vnode->vop->Rewinddir != NULL)
         {
           /* Perform the rewinddir() operation */
 
-          inode->u.i_mops->rewinddir(inode, idir);
+          vnode->vop->Rewinddir(vnode, idir);
           pos = 0;
         }
       else
@@ -157,8 +95,8 @@ static inline void seekmountptdir(struct fs_dirent_s *idir, off_t offset)
 
   while (pos < offset)
     {
-      if (!inode->u.i_mops || !inode->u.i_mops->readdir ||
-           inode->u.i_mops->readdir(inode, idir) <= 0)
+      if (!vnode->vop || !vnode->vop->Readdir ||
+           vnode->vop->Readdir(vnode, idir) <= 0)
         {
           /* We can't read the next entry and there is no way to return
            * an error indication.
@@ -175,7 +113,6 @@ static inline void seekmountptdir(struct fs_dirent_s *idir, off_t offset)
   /* If we get here the directory position has been successfully set */
   idir->fd_position = pos;
 }
-#endif
 
 /****************************************************************************
  * Public Functions
@@ -203,13 +140,6 @@ void seekdir(DIR *dirp, long offset)
 {
   struct fs_dirent_s *idir = (struct fs_dirent_s *)dirp;
 
-  /* Verify that we were provided with a valid directory structure,
-   * A special case is when we enumerate an "empty", unused inode (fd_root
-   * == 0).  That is an inode in the pseudo-filesystem that has no
-   * operations and no children.  This is a "dangling" directory entry that
-   * has lost its children.
-   */
-
   if (!idir || !idir->fd_root || idir->fd_status != DIRENT_MAGIC)
     {
       set_errno(EBADF);
@@ -222,22 +152,5 @@ void seekdir(DIR *dirp, long offset)
       return;
     }
 
-  /* The way we handle the readdir depends on the type of inode
-   * that we are dealing with.
-   */
-
-#ifndef CONFIG_DISABLE_MOUNTPOINT
-  if (INODE_IS_MOUNTPT(idir->fd_root))
-    {
-      /* The node is a file system mointpoint */
-
-      seekmountptdir(idir, offset);
-    }
-  else
-#endif
-    {
-      /* The node is part of the root pseudo file system */
-
-      seekpseudodir(idir, offset);
-    }
+  seekmountptdir(idir, offset);
 }

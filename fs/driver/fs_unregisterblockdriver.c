@@ -59,15 +59,10 @@
 
 int unregister_blockdriver(const char *path)
 {
-  int ret;
-
   if (path == NULL || strlen(path) >= PATH_MAX || strncmp("/dev/", path, DEV_PATH_LEN) != 0)
     {
       return EINVAL;
     }
 
-  inode_semtake();
-  ret = inode_remove(path);
-  inode_semgive();
-  return ret;
+  return -ENOSYS;
 }

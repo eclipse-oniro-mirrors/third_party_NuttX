@@ -54,7 +54,6 @@
 #include "los_signal.h"
 #include "los_syscall.h"
 
-#include "inode/inode.h"
 #ifndef CONFIG_DISABLE_POLL
 
 

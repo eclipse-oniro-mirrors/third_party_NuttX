@@ -44,7 +44,7 @@
 #include "sched.h"
 #include "assert.h"
 #include "errno.h"
-#include "inode/inode.h"
+#include "fs/vnode.h"
 
 #if CONFIG_NFILE_DESCRIPTORS > 0
 
@@ -70,36 +70,37 @@
  *
  ****************************************************************************/
 
-off_t file_seek(FAR struct file *filep, off_t offset, int whence)
+off_t file_seek(struct file *filep, off_t offset, int whence)
 {
-  FAR struct inode *inode;
-  int ret;
+  struct Vnode *vnode;
   int err = OK;
+  off_t pos;
 
-  DEBUGASSERT(filep);
-  inode =  filep->f_inode;
+  vnode = filep->f_vnode;
 
-  if (!inode)
+  if (!vnode)
     {
-      err = EBADF;
+      err = -EBADF;
       goto errout;
     }
 
   /* Invoke the file seek method if available */
 
-  if (inode->u.i_ops && inode->u.i_ops->seek)
+  if (filep->ops != NULL && filep->ops->seek != NULL)
     {
-      ret = inode->u.i_ops->seek(filep, offset, whence);
-      if (ret < 0)
+      pos = filep->ops->seek(filep, offset, whence);
+      if (pos < 0)
         {
-          err = -ret;
+          err = pos;
           goto errout;
+        }
+      else
+        {
+          filep->f_pos = pos;
         }
     }
   else
-    {
-      /* No... Just set the common file position value */
-
+    {       /* No... Just set the common file position value */
       switch (whence)
         {
           case SEEK_CUR:
@@ -114,25 +115,24 @@ off_t file_seek(FAR struct file *filep, off_t offset, int whence)
               }
             else
               {
-                err = EINVAL;
+                err = -EINVAL;
                 goto errout;
               }
             break;
-
           case SEEK_END:
-            err = ENOSYS;
+            err = -ENOSYS;
             goto errout;
 
           default:
-            err = EINVAL;
+            err = -EINVAL;
             goto errout;
         }
-    }
+  }
 
   return (off_t)filep->f_pos;
 
 errout:
-  set_errno(err);
+  set_errno(-err);
   return (off_t)VFS_ERROR;
 }
 
@@ -175,7 +175,7 @@ errout:
 
 off_t lseek(int fd, off_t offset, int whence)
 {
-  FAR struct file *filep;
+  struct file *filep;
 
   /* Get the file structure corresponding to the file descriptor. */
 
@@ -190,5 +190,4 @@ off_t lseek(int fd, off_t offset, int whence)
 
   return file_seek(filep, offset, whence);
 }
-
 #endif

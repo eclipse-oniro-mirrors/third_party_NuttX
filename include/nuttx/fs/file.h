@@ -67,9 +67,9 @@ extern "C" {
 
 #ifndef CONFIG_DISABLE_MOUNTPOINT
 struct statfs;                    /* Forward reference */
-typedef int (*foreach_mountpoint_t)(FAR const char *mountpoint,
-                                    FAR struct statfs *statbuf,
-                                    FAR void *arg);
+typedef int (*foreach_mountpoint_t)(const char *mountpoint,
+                                    struct statfs *statbuf,
+                                    void *arg);
 #endif
 
 struct filelist *sched_getfiles(void);
@@ -110,6 +110,8 @@ ssize_t sendfile(int outfd, int infd, off_t *offset, size_t count);
  */
 
 extern int get_path_from_fd(int fd, char **path);
+extern int get_path_from_dirfd(int fd, char **path);
+bool get_bit(int i);
 
 /****************************************************************************
  * Name: foreach_mountpoint
@@ -119,8 +121,8 @@ extern int get_path_from_fd(int fd, char **path);
  *   terminated when the callback 'handler' returns a non-zero value, or when
  *   all of the mountpoints have been visited.
  *
- *   This is just a front end "filter" to foreach_inode() that forwards only
- *   mountpoint inodes.  It is intended to support the mount() command to
+ *   This is just a front end "filter" to foreach_vnode() that forwards only
+ *   mountpoint vnodes.  It is intended to support the mount() command to
  *   when the mount command is used to enumerate mounts.
  *
  *   NOTE 1: Use with caution... The pseudo-file system is locked throughout
@@ -136,39 +138,7 @@ extern int get_path_from_fd(int fd, char **path);
  ****************************************************************************/
 
 #ifndef CONFIG_DISABLE_MOUNTPOINT
-int foreach_mountpoint(foreach_mountpoint_t handler, FAR void *arg);
-#endif
-
-/****************************************************************************
- * Name: find_blockdriver
- *
- * Description:
- *   Return the inode of the block driver specified by 'pathname'
- *
- * Input Parameters:
- *   pathname   - The full path to the block driver to be located
- *   mountflags - If MS_RDONLY is not set, then driver must support write
- *                operations (see include/sys/mount.h)
- *   ppinode    - Address of the location to return the inode reference
- *
- * Returned Value:
- *   Returns zero on success or a negated errno on failure:
- *
- *   EINVAL  - Pathname or pinode is NULL.
- *   ENOENT  - No block driver of this name is registered
- *   ENOTBLK - The inode associated with the pathname is not a block driver
- *   EACCESS - The MS_RDONLY option was not set but this driver does not
- *             support write access
- *
- * Attention:
- *   The parameter pathname is a full path, which begin with '/'.
- *   The parameter ppinode must point a valid memory, which size must be enough for storing struct inode.
- *
- ****************************************************************************/
-
-#if CONFIG_NFILE_DESCRIPTORS > 0
-int find_blockdriver(FAR const char *pathname, int mountflags,
-                     FAR struct inode **ppinode);
+int foreach_mountpoint(foreach_mountpoint_t handler, void *arg);
 #endif
 
 #ifdef __cplusplus

@@ -39,11 +39,9 @@
 
 #include "fs/fs.h"
 #include "vfs_config.h"
-
 #include "debug.h"
 #include "errno.h"
-
-#include "inode/inode.h"
+#include "fs/vnode.h"
 #include "disk.h"
 
 /****************************************************************************
@@ -54,56 +52,57 @@
  * Name: close_blockdriver
  *
  * Description:
- *   Call the close method and release the inode
+ *   Call the close method and release the vnode
  *
  * Input Parameters:
- *   inode - reference to the inode of a block driver opened by open_blockdriver
+ *   vnode - reference to the vnode of a block driver opened by open_blockdriver
  *
  * Returned Value:
  *   Returns zero on success or a negated errno on failure:
  *
- *   EINVAL  - inode is NULL
- *   ENOTBLK - The inode is not a block driver
+ *   EINVAL  - vnode is NULL
+ *   ENOTBLK - The vnode is not a block driver
  *
  ****************************************************************************/
 
-int close_blockdriver(FAR struct inode *inode_ptr)
+int close_blockdriver(struct Vnode *vnode_ptr)
 {
+#ifdef VFS_IMPL_LATER
   int ret = 0; /* Assume success */
   los_part *part = NULL;
   los_disk *disk = NULL;
 
   /* Sanity checks */
 
-  if (!inode_ptr || !inode_ptr->u.i_bops)
+  if (!vnode_ptr || !vnode_ptr->u.i_bops)
     {
       ret = -EINVAL;
       goto errout;
     }
 
-  /* Verify that the inode is a block driver. */
+  /* Verify that the vnode is a block driver. */
 
-  if (!INODE_IS_BLOCK(inode_ptr))
+  if (!INODE_IS_BLOCK(vnode_ptr))
     {
-      fdbg("inode is not a block driver\n");
+      fdbg("vnode is not a block driver\n");
       ret = -ENOTBLK;
       goto errout;
     }
 
-  part = los_part_find(inode_ptr);
+  part = los_part_find(vnode_ptr);
   if (part != NULL)
     {
       disk = get_disk(part->disk_id);
       if (disk == NULL)
         {
           ret = -EINVAL;
-          goto errout_with_inode;
+          goto errout_with_vnode;
         }
 
       if (pthread_mutex_lock(&disk->disk_mutex) != ENOERR)
         {
           PRINT_ERR("%s %d, mutex lock fail!\n", __FUNCTION__, __LINE__);
-          inode_release(inode_ptr);
+          vnode_release(vnode_ptr);
           return -1;
         }
       if (disk->disk_status == STAT_INUSED)
@@ -113,34 +112,36 @@ int close_blockdriver(FAR struct inode *inode_ptr)
           * if needed.
           */
 
-          if (inode_ptr->u.i_bops->close != NULL)
+          if (vnode_ptr->u.i_bops->close != NULL)
             {
-              ret = inode_ptr->u.i_bops->close(inode_ptr);
+              ret = vnode_ptr->u.i_bops->close(vnode_ptr);
             }
         }
 
       if (pthread_mutex_unlock(&disk->disk_mutex) != ENOERR)
         {
           PRINT_ERR("%s %d, mutex unlock fail!\n", __FUNCTION__, __LINE__);
-          inode_release(inode_ptr);
+          vnode_release(vnode_ptr);
           return -1;
         }
 
     }
   else
     {
-      if ((inode_ptr->i_flags & FSNODEFLAG_DELETED) == 0 && inode_ptr->u.i_bops->close != NULL)
+      if ((vnode_ptr->i_flags & FSNODEFLAG_DELETED) == 0 && vnode_ptr->u.i_bops->close != NULL)
         {
-          ret = inode_ptr->u.i_bops->close(inode_ptr);
+          ret = vnode_ptr->u.i_bops->close(vnode_ptr);
         }
     }
 
-errout_with_inode:
+errout_with_vnode:
 
-  /* Then release the reference on the inode */
+  /* Then release the reference on the vnode */
 
-  inode_release(inode_ptr);
+  vnode_release(vnode_ptr);
 
 errout:
   return ret;
+#endif
+  return 0;
 }

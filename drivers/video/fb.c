@@ -61,8 +61,8 @@
 
 struct fb_chardev_s
 {
-  FAR struct fb_vtable_s *vtable; /* Framebuffer interface */
-  FAR void *fbmem;                /* Start of frame buffer memory */
+  struct fb_vtable_s *vtable; /* Framebuffer interface */
+  void *fbmem;                /* Start of frame buffer memory */
   size_t fblen;                   /* Size of the framebuffer */
   uint8_t plane;                  /* Video plan number */
   uint8_t bpp;                    /* Bits per pixel */
@@ -75,15 +75,13 @@ static struct fb_chardev_s *g_fb_dev[FB_DEV_MAXNUM] = {NULL};
  * Private Function Prototypes
  ****************************************************************************/
 
-static int     fb_open(FAR struct file *filep);
-static int     fb_close(FAR struct file *filep);
-static ssize_t fb_read(FAR struct file *filep, FAR char *buffer,
-                 size_t buflen);
-static ssize_t fb_write(FAR struct file *filep, FAR const char *buffer,
-                 size_t buflen);
-static off_t   fb_seek(FAR struct file *filep, off_t offset, int whence);
-static int     fb_ioctl(FAR struct file *filep, int cmd, unsigned long arg);
-static ssize_t fb_mmap(FAR struct file* filep, FAR LosVmMapRegion *region);
+static int     fb_open(struct file *filep);
+static int     fb_close(struct file *filep);
+static ssize_t fb_read(struct file *filep, char *buffer, size_t buflen);
+static ssize_t fb_write(struct file *filep, const char *buffer, size_t buflen);
+static off_t   fb_seek(struct file *filep, off_t offset, int whence);
+static int     fb_ioctl(struct file *filep, int cmd, unsigned long arg);
+static ssize_t fb_mmap(struct file* filep, LosVmMapRegion *region);
 
 /****************************************************************************
  * Private Data
@@ -110,13 +108,13 @@ static const struct file_operations_vfs fb_fops =
  * Private Functions
  ****************************************************************************/
 
-static ssize_t fb_mmap(FAR struct file *filep, FAR LosVmMapRegion *region)
+static ssize_t fb_mmap(struct file *filep, LosVmMapRegion *region)
 {
   int ret = -EINVAL;
   struct fb_chardev_s *fb;
   struct fb_vtable_s *vtable;
 
-  fb = (struct fb_chardev_s *)filep->f_inode->i_private;
+  fb = (struct fb_chardev_s *)((struct drv_data *)filep->f_vnode->data)->priv;
   if (fb == NULL)
     {
       return -ENODEV;
@@ -144,14 +142,14 @@ static ssize_t fb_mmap(FAR struct file *filep, FAR LosVmMapRegion *region)
  *
  ****************************************************************************/
 
-static int fb_open(FAR struct file *filep)
+static int fb_open(struct file *filep)
 {
-  DEBUGASSERT(filep != NULL && filep->f_inode != NULL);
+  DEBUGASSERT(filep != NULL && filep->f_vnode != NULL);
   struct fb_chardev_s *fb;
   struct fb_vtable_s *vtable;
   int ret = -EINVAL;
 
-  fb = (struct fb_chardev_s *)filep->f_inode->i_private;
+  fb = (struct fb_chardev_s *)((struct drv_data *)filep->f_vnode->data)->priv;
   if (fb == NULL)
     {
       return -ENODEV;
@@ -179,14 +177,14 @@ static int fb_open(FAR struct file *filep)
  *
  ****************************************************************************/
 
-static int fb_close(FAR struct file *filep)
+static int fb_close(struct file *filep)
 {
-  DEBUGASSERT(filep != NULL && filep->f_inode != NULL);
+  DEBUGASSERT(filep != NULL && filep->f_vnode != NULL);
   struct fb_chardev_s *fb;
   struct fb_vtable_s *vtable;
   int ret = -EINVAL;
 
-  fb = (struct fb_chardev_s *)filep->f_inode->i_private;
+  fb = (struct fb_chardev_s *)((struct drv_data *)filep->f_vnode->data)->priv;
   if (fb == NULL)
     {
       return -ENODEV;
@@ -210,10 +208,9 @@ static int fb_close(FAR struct file *filep)
  * Name: fb_read
  ****************************************************************************/
 
-static ssize_t fb_read(FAR struct file *filep, FAR char *buffer, size_t len)
+static ssize_t fb_read(struct file *filep, char *buffer, size_t len)
 {
-  FAR struct inode *inode;
-  FAR struct fb_chardev_s *fb;
+  struct fb_chardev_s *fb = NULL;
   size_t start;
   size_t end;
   size_t size;
@@ -221,10 +218,8 @@ static ssize_t fb_read(FAR struct file *filep, FAR char *buffer, size_t len)
 
   /* Get the framebuffer instance */
 
-  DEBUGASSERT(filep != NULL && filep->f_inode != NULL);
-  inode = filep->f_inode;
-  fb    = (FAR struct fb_chardev_s *)inode->i_private;
-
+  DEBUGASSERT(filep != NULL && filep->f_vnode != NULL);
+  fb = (struct fb_chardev_s *)((struct drv_data *)filep->f_vnode->data)->priv;
   /* Get the start and size of the transfer */
 
   start = filep->f_pos;
@@ -256,11 +251,10 @@ static ssize_t fb_read(FAR struct file *filep, FAR char *buffer, size_t len)
  * Name: fb_write
  ****************************************************************************/
 
-static ssize_t fb_write(FAR struct file *filep, FAR const char *buffer,
+static ssize_t fb_write(struct file *filep, const char *buffer,
                         size_t len)
 {
-  FAR struct inode *inode;
-  FAR struct fb_chardev_s *fb;
+  struct fb_chardev_s *fb = NULL;
   size_t start;
   size_t end;
   size_t size;
@@ -268,10 +262,8 @@ static ssize_t fb_write(FAR struct file *filep, FAR const char *buffer,
 
   /* Get the framebuffer instance */
 
-  DEBUGASSERT(filep != NULL && filep->f_inode != NULL);
-  inode = filep->f_inode;
-  fb    = (FAR struct fb_chardev_s *)inode->i_private;
-
+  DEBUGASSERT(filep != NULL && filep->f_vnode != NULL);
+  fb = (struct fb_chardev_s *)((struct drv_data *)filep->f_vnode->data)->priv;
   /* Get the start and size of the transfer */
 
   start = filep->f_pos;
@@ -309,19 +301,16 @@ static ssize_t fb_write(FAR struct file *filep, FAR const char *buffer,
  *
  ****************************************************************************/
 
-static off_t fb_seek(FAR struct file *filep, off_t offset, int whence)
+static off_t fb_seek(struct file *filep, off_t offset, int whence)
 {
-  FAR struct inode *inode;
-  FAR struct fb_chardev_s *fb;
+  struct fb_chardev_s *fb = NULL;
   off_t newpos;
   int ret;
 
   /* Get the framebuffer instance */
 
-  DEBUGASSERT(filep != NULL && filep->f_inode != NULL);
-  inode = filep->f_inode;
-  fb    = (FAR struct fb_chardev_s *)inode->i_private;
-
+  DEBUGASSERT(filep != NULL && filep->f_vnode != NULL);
+  fb = (struct fb_chardev_s *)((struct drv_data *)filep->f_vnode->data)->priv;
   /* Determine the new, requested file position */
 
   switch (whence)
@@ -378,25 +367,22 @@ static off_t fb_seek(FAR struct file *filep, off_t offset, int whence)
  *
  ****************************************************************************/
 
-static int fb_ioctl(FAR struct file *filep, int cmd, unsigned long arg)
+static int fb_ioctl(struct file *filep, int cmd, unsigned long arg)
 {
-  FAR struct inode *inode;
-  FAR struct fb_chardev_s *fb;
+  struct fb_chardev_s *fb = NULL;
   int ret;
 
   /* Get the framebuffer instance */
 
-  DEBUGASSERT(filep != NULL && filep->f_inode != NULL);
-  inode = filep->f_inode;
-  fb    = (FAR struct fb_chardev_s *)inode->i_private;
-
+  DEBUGASSERT(filep != NULL && filep->f_vnode != NULL);
+  fb = (struct fb_chardev_s *)((struct drv_data *)filep->f_vnode->data)->priv;
   /* Process the IOCTL command */
 
   switch (cmd)
     {
       case FIOC_MMAP:  /* Get color plane info */
         {
-          FAR void **ppv = (FAR void **)((uintptr_t)arg);
+          void **ppv = (void **)((uintptr_t)arg);
           uintptr_t fbmem = (uintptr_t)fb->fbmem;
 
           /* Return the address corresponding to the start of frame buffer. */
@@ -532,7 +518,7 @@ static int fb_ioctl(FAR struct file *filep, int cmd, unsigned long arg)
           ret = fb->vtable->getplaneinfo(fb->vtable, fb->plane, &pinfo);
           if (ret >= 0)
             {
-               nx_notify_rectangle((FAR NX_PLANEINFOTYPE *)&pinfo, &rect);
+               nx_notify_rectangle((NX_PLANEINFOTYPE *)&pinfo, &rect);
             }
         }
         break;
@@ -739,7 +725,7 @@ static int fb_ioctl(FAR struct file *filep, int cmd, unsigned long arg)
 
 int fb_register(int display, int plane)
 {
-  FAR struct fb_chardev_s *fb;
+  struct fb_chardev_s *fb = NULL;
   struct fb_videoinfo_s vinfo;
   struct fb_planeinfo_s pinfo;
 #ifdef CONFIG_FB_OVERLAY
@@ -754,7 +740,7 @@ int fb_register(int display, int plane)
 
   /* Allocate a framebuffer state instance */
 
-  fb = (FAR struct fb_chardev_s *)malloc(sizeof(struct fb_chardev_s));
+  fb = (struct fb_chardev_s *)malloc(sizeof(struct fb_chardev_s));
   if (fb == NULL)
     {
       return -ENOMEM;
@@ -837,7 +823,7 @@ int fb_register(int display, int plane)
       (void)snprintf(devname, 16, "/dev/fb%d.%d", display, plane);
     }
 
-  ret = register_driver(devname, &fb_fops, 0666, (FAR void *)fb);
+  ret = register_driver(devname, &fb_fops, 0666, (void *)fb);
   if (ret < 0)
     {
       gerr("ERROR: register_driver() failed: %d\n", ret);
@@ -855,7 +841,7 @@ errout_with_fb:
 
 int fb_unregister(int display)
 {
-    FAR struct fb_chardev_s *fb;
+    struct fb_chardev_s *fb = NULL;
 
     if (display < 0 || display >= FB_DEV_MAXNUM)
         return -EINVAL;

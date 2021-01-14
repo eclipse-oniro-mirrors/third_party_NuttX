@@ -40,15 +40,14 @@
 
 #include "vfs_config.h"
 
+#include "driver/driver.h"
 #include "sys/mount.h"
 #include "string.h"
 #include "errno.h"
 #include "assert.h"
 #include "debug.h"
-
 #include "fs/fs.h"
-
-#include "inode/inode.h"
+#include "fs/vnode.h"
 #include "stdlib.h"
 #include "driver/driver.h"
 #ifdef LOSCFG_DRIVERS_MTD
@@ -58,10 +57,15 @@
 #include "errcode_fat.h"
 #endif
 #include "los_tables.h"
-
-#ifdef LOSCFG_FS_ZPFS
-#include "vfs_zpfs.h"
+#ifdef LOSCFG_DRIVERS_RANDOM
+#include "hisoc/random.h"
+#else
+#include "stdlib.h"
 #endif
+#include "fs/vfs_util.h"
+#include "fs/path_cache.h"
+#include "fs/mount.h"
+
 
 /* At least one filesystem must be defined, or this file will not compile.
  * It may be desire-able to make filesystems dynamically registered at
@@ -122,6 +126,7 @@ static const struct fsmap_t *mount_findfs(const char *filesystemtype)
   return (const struct fsmap_t *)NULL;
 }
 
+
 /****************************************************************************
  * Public Functions
  ****************************************************************************/
@@ -155,23 +160,20 @@ int mount(const char *source, const char *target,
           const void *data)
 {
   int ret;
-  void *fshandle = NULL;
   int errcode = 0;
-  char *fullpath = NULL;
-  char *fullpath_bak = NULL;
-
-  struct inode *blkdrvr_inode = NULL;
-  struct inode *mountpt_inode = NULL;
+  struct Mount* mnt = NULL;
+  struct Vnode *device = NULL;
+  struct Vnode *mountpt_vnode = NULL;
   const struct fsmap_t *fsmap = NULL;
-  const struct mountpt_operations *mops = NULL;
-
+  const struct MountOps *mops = NULL;
+  LIST_HEAD *mount_list = NULL;
 #ifdef LOSCFG_DRIVERS_MTD
   mtd_partition *partition = NULL;
 #endif
 
   if (filesystemtype == NULL)
     {
-      errcode = EINVAL;
+      errcode = -EINVAL;
       goto errout;
     }
 
@@ -179,23 +181,12 @@ int mount(const char *source, const char *target,
 
   DEBUGASSERT(target && filesystemtype);
 
-  ret = vfs_normalize_path((const char *)NULL, target, &fullpath);
-  if (ret < 0)
-    {
-      PRINT_ERR("Failed to get fullpath,target: %s\n", target);
-      errcode = -ret;
-      goto errout;
-    }
-  fullpath_bak = fullpath;
-
   /* Find the specified filesystem.  Try the block driver file systems first */
 
-  if ((fsmap = mount_findfs(filesystemtype)) == NULL ||
-      (fsmap->is_bdfs && !source))
+  if ((fsmap = mount_findfs(filesystemtype)) == NULL || (fsmap->is_bdfs && !source))
     {
       PRINT_ERR("Failed to find file system %s\n", filesystemtype);
-      errcode = ENODEV;
-      free(fullpath_bak);
+      errcode = -ENODEV;
       goto errout;
     }
 
@@ -209,135 +200,77 @@ int mount(const char *source, const char *target,
 
       /* Find the block driver */
 
-      ret = find_blockdriver(source, mountflags, &blkdrvr_inode);
+      ret = find_blockdriver(source, mountflags, &device);
       if (ret < 0)
         {
           PRINT_ERR("Failed to find block driver %s\n", source);
-          errcode = -ret;
-          free(fullpath_bak);
+          errcode = ret;
           goto errout;
         }
     }
 
-  /* Insert a dummy node -- we need to hold the inode semaphore
-   * to do this because we will have a momentarily bad structure.
-   */
+  VnodeHold();
+  ret = VnodeLookup(target, &mountpt_vnode, 0);
 
-  inode_semtake();
-#ifdef LOSCFG_FS_ZPFS
-  if (strcmp(filesystemtype, ZPFS_NAME) == 0)
-    {
-      ret = ZpfsPrepare(source, fullpath, &mountpt_inode, true);
-      if (ret < 0)
-        {
-            errcode = -ret;
-            goto errout_with_semaphore;
-        }
-      data = (const void *)mountpt_inode->i_private;
-    }
-  else
-    {
-#endif
-  mountpt_inode = inode_search((const char **)&fullpath, (struct inode **)NULL, (struct inode **)NULL, \
-                               (const char **)NULL);
+  /* The mount point must be an existed vnode. */
 
-  /* The mount point must be an existed inode. */
-
-  if (mountpt_inode == NULL)
+  if (ret != OK)
     {
       PRINT_ERR("Failed to find valid mountpoint %s\n", target);
-      errcode = EINVAL;
-      goto errout_with_semaphore;
+      errcode = -EINVAL;
+      goto errout_with_lock;
     }
-
-  /* The mount point must be a dangling node with no children and
-   * no operations. If this inode is mounted, or it has children
-   * (except "/"), or it has operations, it cannot be mounted.
-   */
-
-  if (INODE_IS_MOUNTPT(mountpt_inode) || (mountpt_inode->i_child && strcmp(target, "/")) || mountpt_inode->u.i_ops)
+  if (mountpt_vnode->flag & VNODE_FLAG_MOUNT_ORIGIN)
     {
-      PRINT_ERR("Can't to mount to this inode %s\n", target);
-      errcode = EINVAL;
-      goto errout_with_semaphore;
+      PRINT_ERR("can't mount to %s, already mounted.\n", target);
+      errcode = -EINVAL;
+      goto errout_with_lock;
     }
-#ifdef LOSCFG_FS_ZPFS
-   }
-#endif
-
-  mountpt_inode ->mountflags = mountflags;
 
   /* Bind the block driver to an instance of the file system.  The file
    * system returns a reference to some opaque, fs-dependent structure
    * that encapsulates this binding.
    */
 
-  if (mops->bind == NULL)
+  if (mops->Mount == NULL)
     {
       /* The filesystem does not support the bind operation ??? */
 
-      fdbg("ERROR: Filesystem does not support bind\n");
-      errcode = EINVAL;
+      PRINTK("ERROR: Filesystem does not support bind\n");
+      errcode = -ENOSYS;
       goto errout_with_mountpt;
     }
 
   /* Increment reference count for the reference we pass to the file system */
-
-  if (blkdrvr_inode != NULL)
-    {
-      blkdrvr_inode->i_crefs++;
-
-      /* On failure, the bind method returns -errorcode */
-
-      if (blkdrvr_inode->e_status != STAT_UNMOUNTED)
-        {
-          fdbg("ERROR: The node is busy\n");
-          errcode = EBUSY;
-          blkdrvr_inode->i_crefs--;
-          goto errout_with_mountpt;
-        }
-    }
 #ifdef LOSCFG_DRIVERS_MTD
-  if (fsmap->is_mtd_support && (blkdrvr_inode != NULL))
+  if (fsmap->is_mtd_support && (device != NULL))
     {
-      partition = (mtd_partition *)blkdrvr_inode->i_private;
+      partition = (mtd_partition *)((struct drv_data *)device->data)->priv;
       partition->mountpoint_name = (char *)zalloc(strlen(target) + 1);
       if (partition->mountpoint_name == NULL)
         {
-          errcode = ENOMEM;
-          blkdrvr_inode->i_crefs--;
+          errcode = -ENOMEM;
           goto errout_with_mountpt;
         }
-
       (void)strncpy_s(partition->mountpoint_name, strlen(target) + 1, target, strlen(target));
       partition->mountpoint_name[strlen(target)] = '\0';
     }
 #endif
-  mountpt_inode ->mountflags = mountflags;
-  ret = mops->bind(blkdrvr_inode, data, &fshandle, fullpath_bak);
-#ifdef LOSCFG_FS_FAT_VIRTUAL_PARTITION
-  if (ret >= VIRERR_BASE)
-    {
-      errcode = ret;
-    }
-  else
-#endif
+
+  mnt = MountAlloc(mountpt_vnode, (struct MountOps*)mops);
+
+  ret = mops->Mount(mnt, device, data);
   if (ret != 0)
     {
-      /* The inode is unhappy with the blkdrvr for some reason.  Back out
+      /* The vnode is unhappy with the blkdrvr for some reason.  Back out
        * the count for the reference we failed to pass and exit with an
        * error.
        */
 
       fdbg("ERROR: Bind method failed: %d\n", ret);
-      if (blkdrvr_inode != NULL)
-        {
-          blkdrvr_inode->i_crefs--;
-        }
-
-      errcode = -ret;
+      errcode = ret;
 #ifdef LOSCFG_DRIVERS_MTD
-      if (fsmap->is_mtd_support && (blkdrvr_inode != NULL) && (partition != NULL))
+      if (fsmap->is_mtd_support && (device != NULL) && (partition != NULL))
         {
           free(partition->mountpoint_name);
           partition->mountpoint_name = NULL;
@@ -345,68 +278,42 @@ int mount(const char *source, const char *target,
 #endif
       goto errout_with_mountpt;
     }
+    mnt->vnodeBeCovered->flag |= VNODE_FLAG_MOUNT_NEW;
+    mnt->vnodeCovered->flag |= VNODE_FLAG_MOUNT_ORIGIN;
+    mnt->ops = mops;
+    mnt->mountFlags = mountflags;
 
-  /* We have it, now populate it with driver specific information. */
+  //* We have it, now populate it with driver specific information. */
 
-  INODE_SET_MOUNTPT(mountpt_inode);
+  mount_list = GetMountList();
+  LOS_ListAdd(mount_list, &mnt->mountList);
 
-  mountpt_inode->u.i_mops  = mops;
-  mountpt_inode->i_private = fshandle;
-#ifdef LOSCFG_FILE_MODE
-  struct stat statinfo = {0};
-  if ((g_root_inode != mountpt_inode) && (stat(target, &statinfo) == 0))
+  if (!strcmp("/", target))
     {
-      mountpt_inode->i_mode = statinfo.st_mode;
-      mountpt_inode->i_uid = statinfo.st_uid;
-      mountpt_inode->i_gid = statinfo.st_gid;
+      ChangeRoot(mnt->vnodeCovered);
     }
 
-#endif
+  VnodeDrop();
 
-  if (blkdrvr_inode)
-    {
-      blkdrvr_inode->e_status = STAT_MOUNTED;
-    }
-  inode_semgive();
-
-  /* We can release our reference to the blkdrver_inode, if the filesystem
-   * wants to retain the blockdriver inode (which it should), then it must
-   * have called inode_addref().  There is one reference on mountpt_inode
+  /* We can release our reference to the blkdrver_vnode, if the filesystem
+   * wants to retain the blockdriver vnode (which it should), then it must
+   * have called vnode_addref().  There is one reference on mountpt_vnode
    * that will persist until umount() is called.
    */
-
-  if (blkdrvr_inode != NULL)
-    {
-      inode_release(blkdrvr_inode);
-    }
-
-  free(fullpath_bak);
-
-#ifdef LOSCFG_FS_FAT_VIRTUAL_PARTITION
-  if (errcode >= VIRERR_BASE)
-    {
-      set_errno(errcode);
-    }
-#endif
 
   return OK;
 
   /* A lot of goto's!  But they make the error handling much simpler */
 
 errout_with_mountpt:
-  (void)inode_remove(fullpath);
-
-errout_with_semaphore:
-  inode_semgive();
-  if (blkdrvr_inode != NULL)
+  if (mnt)
     {
-      inode_release(blkdrvr_inode);
+      free(mnt);
     }
-  free(fullpath_bak);
-
+errout_with_lock:
+  VnodeDrop();
 errout:
-  set_errno(errcode);
+  set_errno(-errcode);
   return VFS_ERROR;
 }
-
 #endif /* CONFIG_FS_READABLE */

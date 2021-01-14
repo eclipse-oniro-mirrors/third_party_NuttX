@@ -45,7 +45,7 @@
 #include "errno.h"
 #include "assert.h"
 #include "fs/fs.h"
-#include "inode/inode.h"
+#include "fs/vnode.h"
 
 #if defined(LOSCFG_NET_LWIP_SACK)
 #include "lwip/sockets.h"
@@ -81,14 +81,14 @@
  ****************************************************************************/
 
 #if CONFIG_NFILE_DESCRIPTORS > 0
-int file_vfcntl(FAR struct file *filep, int cmd, va_list ap)
+int file_vfcntl(struct file *filep, int cmd, va_list ap)
 {
   int err = 0;
   int ret = OK;
 
   /* Was this file opened ? */
 
-  if (!filep || !filep->f_inode)
+  if (!filep || !filep->f_vnode)
     {
       err = EBADF;
       goto errout;
@@ -257,7 +257,7 @@ errout:
 
 int fcntl(int fd, int cmd, ...)
 {
-  FAR struct file *filep;
+  struct file *filep = NULL;
   va_list ap;
   int ret;
   int val = 0;
@@ -319,7 +319,7 @@ int fcntl(int fd, int cmd, ...)
 
 int fcntl64(int fd, int cmd, ...)
 {
-  FAR struct file *filep = NULL;
+  struct file *filep = NULL;
   va_list va_ap;
   int reval;
   int va_val = 0;

@@ -46,7 +46,6 @@
 #include "sys/types.h"
 #include "stdint.h"
 #include "dirent.h"
-
 #include "fs/fs.h"
 
 #ifdef __cplusplus
@@ -132,7 +131,7 @@ struct fs_cromfsdir_s
 struct tmpfs_directory_s;               /* Forward reference */
 struct fs_tmpfsdir_s
 {
-  FAR struct tmpfs_directory_s *tf_tdo; /* Directory being enumerated */
+  struct tmpfs_directory_s *tf_tdo; /* Directory being enumerated */
   unsigned int tf_index;                /* Directory index */
 };
 
@@ -147,12 +146,12 @@ struct fs_binfsdir_s
 
 #ifdef CONFIG_FS_NXFFS
 /* NXFFS is the tiny NuttX wear-leveling FLASH file system.  The state value is
- * the offset in FLASH memory to the next inode entry.
+ * the offset in FLASH memory to the next vnode entry.
  */
 
 struct fs_nxffsdir_s
 {
-  off_t nx_offset;                     /* Offset to the next inode */
+  off_t nx_offset;                     /* Offset to the next vnode */
 };
 #endif
 
@@ -203,8 +202,8 @@ struct fs_unionfsdir_s
   uint8_t fu_ndx;                             /* Index of file system being enumerated */
   bool fu_eod;                                /* True: At end of directory */
   bool fu_prefix[2];                          /* True: Fake directory in prefix */
-  FAR char *fu_relpath;                       /* Path being enumerated */
-  FAR struct fs_dirent_s *fu_lower[2];        /* dirent struct used by contained file system */
+  char *fu_relpath;                       /* Path being enumerated */
+  struct fs_dirent_s *fu_lower[2];        /* dirent struct used by contained file system */
 };
 #endif
 
@@ -215,7 +214,7 @@ struct fs_unionfsdir_s
 
 struct fs_userfsdir_s
 {
-  FAR void *fs_dir;                           /* Opaque pointer to UserFS DIR */
+  void *fs_dir;                           /* Opaque pointer to UserFS DIR */
 };
 #endif
 
@@ -226,21 +225,21 @@ struct fs_userfsdir_s
 
 struct fs_hostfsdir_s
 {
-  FAR void *fs_dir;                           /* Opaque pointer to host DIR */
+  void *fs_dir;                           /* Opaque pointer to host DIR */
 };
 #endif
 
 struct fs_dirent_s
 {
-  /* This is the node that was opened by opendir.  The type of the inode
+  /* This is the node that was opened by opendir.  The type of the vnode
    * determines the way that the readdir() operations are performed. For the
    * pseudo root pseudo-file system, it is also used to support rewind.
    *
-   * We hold a reference on this inode so we know that it will persist until
-   * closedir() is called (although inodes linked to this inode may change).
+   * We hold a reference on this vnode so we know that it will persist until
+   * closedir() is called (although vnodes linked to this vnode may change).
    */
 
-  struct inode *fd_root;
+  struct Vnode *fd_root;
 
   /* At present, only mountpoints require special handling flags */
 
@@ -251,6 +250,10 @@ struct fs_dirent_s
   /* This keeps track of the current directory position for telldir */
 
   off_t fd_position;
+
+  /* This keeps track of the internal offset for some FSs */
+  off_t fd_int_offset;
+
 
   /* Retained control information depends on the type of file system that
    * provides is provides the mountpoint.  Ideally this information should
@@ -282,7 +285,7 @@ struct fs_dirent_s
       struct fs_binfsdir_s   binfs;
 #endif
 #ifdef CONFIG_FS_PROCFS
-      FAR void              *procfs;
+      void              *procfs;
 #endif
 #ifdef CONFIG_FS_NXFFS
       struct fs_nxffsdir_s   nxffs;
@@ -297,7 +300,7 @@ struct fs_dirent_s
       struct fs_spiffsdir_s  spiffs;
 #endif
 #ifdef CONFIG_FS_LITTLEFS
-      FAR void              *littlefs;
+      void              *littlefs;
 #endif
 #ifdef CONFIG_FS_UNIONFS
       struct fs_unionfsdir_s unionfs;

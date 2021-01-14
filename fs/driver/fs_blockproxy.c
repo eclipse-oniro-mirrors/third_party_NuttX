@@ -169,7 +169,9 @@ static char *unique_chardev(void)
 
 int block_proxy(FAR const char *blkdev, int oflags)
 {
-  FAR char *chardev;
+  struct file *filep = NULL;
+  struct Vnode *vnode = NULL;
+  char *chardev;
   bool readonly;
   int ret;
   int fd;
@@ -211,23 +213,21 @@ int block_proxy(FAR const char *blkdev, int oflags)
       goto errout_with_bchdev;
     }
 
-  /* Unlink the character device name.  The driver instance will persist,
-   * provided that CONFIG_DISABLE_PSEUDOFS_OPERATIONS=y (otherwise, we have
-   * a problem here!)
-   */
-
-  ret = unlink(chardev);
+  ret = fs_getfilep(fd, &filep);
   if (ret < 0)
     {
-      ret = -errno;
-      PRINTK("ERROR: Failed to unlink %s: %d\n", chardev, ret);
+      files_release(fd);
+      ret = -get_errno();
+      goto errout_with_bchdev;
     }
 
-  ret = unregister_driver(chardev);
-  if (ret < 0 && ret != -EBUSY)
-    {
-      PRINTK("ERROR: Failed to unregister %s: %d\n", chardev, ret);
-    }
+  vnode = filep->f_vnode;
+  VnodeHold();
+  vnode->type = VNODE_TYPE_BCHR;
+  VnodeDrop();
+
+  /* Block char device is no need for file mapping */
+  (void)remove_mapping(chardev);
 
   /* Free the allocate character driver name and return the open file
    * descriptor.
@@ -238,10 +238,7 @@ int block_proxy(FAR const char *blkdev, int oflags)
   return fd;
 
 errout_with_bchdev:
-  (void)bchdev_unregister(chardev);
-  (void)unlink(chardev);
   (void)unregister_driver(chardev);
-
 errout_with_chardev:
   (void)free(chardev);
   (void)sem_destroy(&g_devno_sem);

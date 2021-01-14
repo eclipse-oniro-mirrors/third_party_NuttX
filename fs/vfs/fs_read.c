@@ -48,7 +48,7 @@
 #include "assert.h"
 #include "errno.h"
 #include "user_copy.h"
-#include "inode/inode.h"
+#include "fs/vnode.h"
 
 /****************************************************************************
  * Public Functions
@@ -77,13 +77,9 @@
  *
  ****************************************************************************/
 
-ssize_t file_read(FAR struct file *filep, FAR void *buf, size_t nbytes)
+ssize_t file_read(struct file *filep, void *buf, size_t nbytes)
 {
-  FAR struct inode *inode = NULL;
   int ret = -EBADF;
-
-  DEBUGASSERT(filep);
-  inode = filep->f_inode;
 
   if (buf == NULL)
     {
@@ -103,14 +99,14 @@ ssize_t file_read(FAR struct file *filep, FAR void *buf, size_t nbytes)
    * method?
    */
 
-  else if (inode && inode->u.i_ops && inode->u.i_ops->read)
+  else if (filep->ops && filep->ops->read)
     {
       /* Yes.. then let it perform the read.  NOTE that for the case of the
        * mountpoint, we depend on the read methods being identical in
        * signature and position in the operations vtable.
        */
 
-      ret = (int)inode->u.i_ops->read(filep, (char *)buf, (size_t)nbytes);
+      ret = (int)filep->ops->read(filep, (char *)buf, (size_t)nbytes);
     }
 
   /* If an error occurred, set errno and return -1 (ERROR) */
@@ -143,12 +139,12 @@ ssize_t file_read(FAR struct file *filep, FAR void *buf, size_t nbytes)
  *
  ****************************************************************************/
 
-ssize_t read(int fd, FAR void *buf, size_t nbytes)
+ssize_t read(int fd, void *buf, size_t nbytes)
 {
   /* Did we get a valid file descriptor? */
 
 #if CONFIG_NFILE_DESCRIPTORS > 0
-  FAR struct file *filep = NULL;
+  struct file *filep = NULL;
 
   if ((unsigned int)fd >= CONFIG_NFILE_DESCRIPTORS)
 #endif
@@ -158,7 +154,7 @@ ssize_t read(int fd, FAR void *buf, size_t nbytes)
        */
 
 #if defined(LOSCFG_NET_LWIP_SACK)
-      FAR void *bufbak = buf;
+      void *bufbak = buf;
       ssize_t ret;
       if (LOS_IsUserAddress((VADDR_T)(uintptr_t)buf))
         {
@@ -207,7 +203,6 @@ ssize_t read(int fd, FAR void *buf, size_t nbytes)
               return VFS_ERROR;
             }
         }
-
 
       /* The descriptor is in a valid range to file descriptor... do the
        * read.  First, get the file structure.

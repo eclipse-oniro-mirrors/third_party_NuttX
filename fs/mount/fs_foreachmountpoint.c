@@ -49,7 +49,8 @@
 
 #include "fs/fs.h"
 
-#include "inode/inode.h"
+#include "fs/vnode.h"
+#include "limits.h"
 
 #ifndef CONFIG_DISABLE_MOUNTPOINT
 
@@ -68,17 +69,17 @@
 struct enum_mountpoint_s
 {
   foreach_mountpoint_t handler;
-  FAR void            *arg;
+  void            *arg;
 };
 
 /****************************************************************************
  * Private Functions
  ****************************************************************************/
-
-static int mountpoint_filter(FAR struct inode *node,
-                             FAR char dirpath[PATH_MAX], FAR void *arg)
+#ifdef VFS_IMPL_LATER
+static int mountpoint_filter(struct Vnode *node,
+                             char dirpath[PATH_MAX], void *arg)
 {
-  FAR struct enum_mountpoint_s *info = (FAR struct enum_mountpoint_s *)arg;
+  struct enum_mountpoint_s *info = (struct enum_mountpoint_s *)arg;
   struct statfs statbuf;
   int pathlen;
   int namlen;
@@ -86,7 +87,7 @@ static int mountpoint_filter(FAR struct inode *node,
 
   DEBUGASSERT(node && info && info->handler);
 
-  /* Check if the inode is a mountpoint.  Mountpoints must support statfs.
+  /* Check if the vnode is a mountpoint.  Mountpoints must support statfs.
    * If this one does not for some reason, then it will be ignored.
    *
    * The root node is a special case:  It has no operations (u.i_mops == NULL)
@@ -94,8 +95,8 @@ static int mountpoint_filter(FAR struct inode *node,
 
   if (INODE_IS_MOUNTPT(node) && node->u.i_mops && node->u.i_mops->statfs)
     {
-      /* Yes... get the full path to the inode by concatenating the inode
-       * name and the path to the directory containing the inode.
+      /* Yes... get the full path to the vnode by concatenating the vnode
+       * name and the path to the directory containing the vnode.
        */
 
       pathlen = strlen(dirpath);
@@ -108,9 +109,9 @@ static int mountpoint_filter(FAR struct inode *node,
           return -ENAMETOOLONG;
         }
 
-      /* Append the inode name to the directory path */
+      /* Append the vnode name to the directory path */
 
-      ret = snprintf_s(&dirpath[pathlen], PATH_MAX - pathlen, PATH_MAX - pathlen - 1, "%s/", node->i_name);
+      ret = snprintf_s(&dirpath[pathlen], PATH_MAX - pathlen, PATH_MAX - pathlen - 1, "/%s", node->i_name);
       if (ret < 0)
         {
           return -ENAMETOOLONG;
@@ -137,6 +138,7 @@ static int mountpoint_filter(FAR struct inode *node,
 
   return ret;
 }
+#endif
 
 /****************************************************************************
  * Public Functions
@@ -150,8 +152,8 @@ static int mountpoint_filter(FAR struct inode *node,
  *   terminated when the callback 'handler' returns a non-zero value, or when
  *   all of the mountpoints have been visited.
  *
- *   This is just a front end "filter" to foreach_inode() that forwards only
- *   mountpoint inodes.  It is intended to support the mount() command to
+ *   This is just a front end "filter" to foreach_vnode() that forwards only
+ *   mountpoint vnodes.  It is intended to support the mount() command to
  *   when the mount command is used to enumerate mounts.
  *
  *   NOTE 1: Use with caution... The pseudo-file system is locked throughout
@@ -162,16 +164,19 @@ static int mountpoint_filter(FAR struct inode *node,
  *
  ****************************************************************************/
 
-int foreach_mountpoint(foreach_mountpoint_t handler, FAR void *arg)
+int foreach_mountpoint(foreach_mountpoint_t handler, void *arg)
 {
+#ifdef VFS_IMPL_LATER
   struct enum_mountpoint_s info;
 
-  /* Let foreach_inode do the real work */
+  /* Let foreach_vnode do the real work */
 
   info.handler = handler;
   info.arg     = arg;
 
-  return foreach_inode(mountpoint_filter, (FAR void *)&info);
+  return foreach_vnode(mountpoint_filter, (void *)&info);
+#endif
+  return 0;
 }
 
 #endif

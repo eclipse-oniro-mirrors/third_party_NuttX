@@ -39,18 +39,17 @@
  ****************************************************************************/
 #include "unistd.h"
 #include "vfs_config.h"
-
 #include "sys/types.h"
 #include "string.h"
+#include "dirent.h"
 #include "semaphore.h"
 #include "assert.h"
 #include "errno.h"
-
 #include "fs/fs.h"
 #include "fs/file.h"
 #include "stdio.h"
 #include "stdlib.h"
-#include "inode/inode.h"
+#include "fs/vnode.h"
 #include "los_mux.h"
 #include "fs/fd_table.h"
 #ifdef LOSCFG_NET_LWIP_SACK
@@ -105,6 +104,20 @@ static void clear_bit(int i, void *addr)
   *addri = old;
 }
 
+bool get_bit(int i)
+{
+  unsigned int *p = NULL;
+  unsigned int mask;
+
+  p = ((unsigned int *)bitmap) + (i >> 5); /* Gets the location in the bitmap */
+  mask = 1 << (i & 0x1f); /* Gets the mask for the current bit int bitmap */
+  if (!(~(*p) & mask)){
+    return true;
+  }
+  return false;
+}
+
+
 /****************************************************************************
  * Private Functions
  ****************************************************************************/
@@ -113,7 +126,7 @@ static void clear_bit(int i, void *addr)
  * Name: _files_semtake
  ****************************************************************************/
 
-static void _files_semtake(FAR struct filelist *list)
+static void _files_semtake(struct filelist *list)
 {
   /* Take the semaphore (perhaps waiting) */
 
@@ -137,70 +150,71 @@ static void _files_semtake(FAR struct filelist *list)
  * Name: _files_close
  *
  * Description:
- *   Close an inode (if open)
+ *   Close an vnode (if open)
  *
  * Assumuptions:
  *   Caller holds the list semaphore because the file descriptor will be freed.
  *
  ****************************************************************************/
 
-static int _files_close(FAR struct file *filep)
+static int _files_close(struct file *filep)
 {
-  struct inode *inode = filep->f_inode;
+  struct Vnode *vnode = filep->f_vnode;
   int ret = OK;
 
-  /* Check if the struct file is open (i.e., assigned an inode) */
-
-  if (inode)
+  /* Check if the struct file is open (i.e., assigned an vnode) */
+  if (filep->f_oflags & O_DIRECTORY)
     {
-      if (filep->f_oflags & O_DIRECTORY)
+      ret = closedir(filep->f_dir);
+      if (ret != OK)
         {
-          ret = closedir(filep->f_dir);
+          return ret;
+        }
+    }
+  else
+    {
+      /* Close the file, driver, or mountpoint. */
+      if (filep->ops && filep->ops->close)
+        {
+          /* Perform the close operation */
+
+          ret = filep->ops->close(filep);
           if (ret != OK)
             {
               return ret;
             }
         }
-      else
-        {
-          /* Close the file, driver, or mountpoint. */
-
-          if (inode->u.i_ops && inode->u.i_ops->close)
-            {
-              /* Perform the close operation */
-
-              ret = inode->u.i_ops->close(filep);
-              if (ret != OK)
-                {
-                  return ret;
-                }
-            }
-        }
-
-      /* Drop file caches */
-
-      (void)remove_mapping_nolock(filep->f_path, filep);
-
-      /* And release the inode */
-
-      inode_release(inode);
-
-      /* Release the path of file */
-
-      free(filep->f_path);
-
-      /* Release the file descriptor */
-
-      filep->f_magicnum = 0;
-      filep->f_oflags   = 0;
-      filep->f_pos      = 0;
-      filep->f_path     = NULL;
-      filep->f_priv     = NULL;
-      filep->f_inode    = NULL;
-      filep->f_refcount = 0;
-      filep->f_mapping  = NULL;
-      filep->f_dir      = NULL;
+      VnodeHold();
+      vnode->useCount--;
+      VnodeDrop();
     }
+
+  /* Block char device is removed when close */
+  if (vnode->type == VNODE_TYPE_BCHR)
+    {
+      VnodeHold();
+      ret = VnodeFree(vnode);
+      if (ret < 0)
+        {
+          PRINTK("Removing bchar device %s failed\n", filep->f_path);
+        }
+      VnodeDrop();
+    }
+  /* Release the path of file */
+
+  free(filep->f_path);
+
+  /* Release the file descriptor */
+
+  filep->f_magicnum = 0;
+  filep->f_oflags   = 0;
+  filep->f_pos      = 0;
+  filep->f_path     = NULL;
+  filep->f_priv     = NULL;
+  filep->f_vnode    = NULL;
+  filep->f_refcount = 0;
+  filep->f_mapping  = NULL;
+  filep->f_dir      = NULL;
 
   return ret;
 }
@@ -228,7 +242,7 @@ void files_initialize(void)
  *
  ****************************************************************************/
 
-void files_initlist(FAR struct filelist *list)
+void files_initlist(struct filelist *list)
 {
   DEBUGASSERT(list);
 
@@ -245,7 +259,7 @@ void files_initlist(FAR struct filelist *list)
  *
  ****************************************************************************/
 
-void files_releaselist(FAR struct filelist *list)
+void files_releaselist(struct filelist *list)
 {
   int i;
 
@@ -270,7 +284,7 @@ void files_releaselist(FAR struct filelist *list)
  * Name: file_dup2
  *
  * Description:
- *   Assign an inode to a specific files structure.  This is the heart of
+ *   Assign an vnode to a specific files structure.  This is the heart of
  *   dup2.
  *
  *   Equivalent to the non-standard fs_dupfd2() function except that it
@@ -283,20 +297,19 @@ void files_releaselist(FAR struct filelist *list)
  *
  ****************************************************************************/
 
-int file_dup2(FAR struct file *filep1, FAR struct file *filep2)
+int file_dup2(struct file *filep1, struct file *filep2)
 {
-  FAR struct filelist *list = NULL;
-  FAR struct inode *inode_ptr = NULL;
+  struct filelist *list = NULL;
+  struct Vnode *vnode_ptr = NULL;
   char *fullpath = NULL;
   const char *relpath = NULL;
   int err;
   int len;
   int ret;
-  struct inode_search_s desc;
 
-  if (!filep1 || !filep1->f_inode || !filep2)
+  if (!filep1 || !filep1->f_vnode || !filep2)
     {
-      err = EBADF;
+      err = -EBADF;
       goto errout;
     }
 
@@ -314,8 +327,8 @@ int file_dup2(FAR struct file *filep1, FAR struct file *filep2)
       _files_semtake(list);
     }
 
-  /* If there is already an inode contained in the new file structure,
-   * close the file and release the inode.
+  /* If there is already an vnode contained in the new file structure,
+   * close the file and release the vnode.
    */
 
   ret = _files_close(filep2);
@@ -340,26 +353,18 @@ int file_dup2(FAR struct file *filep1, FAR struct file *filep2)
       goto errout_with_ret;
     }
 
-  /* Increment the reference count on the contained inode */
+  /* Increment the reference count on the contained vnode */
 
-  inode_ptr = filep1->f_inode;
+  vnode_ptr = filep1->f_vnode;
 
   /* Then clone the file structure */
 
   filep2->f_oflags = filep1->f_oflags;
   filep2->f_pos    = filep1->f_pos;
-  filep2->f_inode  = inode_ptr;
+  filep2->f_vnode  = vnode_ptr;
   filep2->f_priv   = filep1->f_priv;
 
   (void)strncpy_s(fullpath, len + 1, filep1->f_path, len);
-  SETUP_SEARCH(&desc, fullpath, false);
-  if (inode_find(&desc) < 0)
-    {
-      ret = -EACCES;
-      free(fullpath);
-      goto errout_with_ret;
-    }
-  relpath = desc.relpath;
   filep2->f_path = fullpath;
   filep2->f_relpath = relpath;
 
@@ -367,18 +372,14 @@ int file_dup2(FAR struct file *filep1, FAR struct file *filep2)
    * can maintain the correct open counts.
    */
 
-  if (inode_ptr->u.i_ops)
+  if (vnode_ptr->vop)
     {
 #ifndef CONFIG_DISABLE_MOUNTPOINT
-      if (INODE_IS_MOUNTPT(inode_ptr))
+      if (vnode_ptr->originMount)
         {
           /* Dup the open file on the in the new file structure */
 
-          if (inode_ptr->u.i_mops->dup)
-            {
-              ret = inode_ptr->u.i_mops->dup(filep1, filep2);
-            }
-          else
+          if (vnode_ptr == NULL)
             {
               ret = -ENOSYS;
             }
@@ -388,9 +389,9 @@ int file_dup2(FAR struct file *filep1, FAR struct file *filep2)
         {
           /* (Re-)open the pseudo file or device driver */
 
-          if (inode_ptr->u.i_ops->open)
+          if (vnode_ptr->vop->Open)
             {
-              ret = inode_ptr->u.i_ops->open(filep2);
+              ret = vnode_ptr->vop->Open(vnode_ptr, 0, 0, 0);
             }
           else
             {
@@ -402,7 +403,7 @@ int file_dup2(FAR struct file *filep1, FAR struct file *filep2)
 
       if (ret < 0)
         {
-          goto errout_with_inode;
+          goto errout_with_vnode;
         }
     }
 
@@ -414,13 +415,12 @@ int file_dup2(FAR struct file *filep1, FAR struct file *filep2)
 
   /* Handle various error conditions */
 
-errout_with_inode:
+errout_with_vnode:
 
-  inode_release(filep2->f_inode);
   free(filep2->f_path);
   filep2->f_oflags  = 0;
   filep2->f_pos     = 0;
-  filep2->f_inode   = NULL;
+  filep2->f_vnode   = NULL;
   filep2->f_priv    = NULL;
   filep2->f_path    = NULL;
   filep2->f_relpath = NULL;
@@ -451,9 +451,9 @@ static inline unsigned int files_magic_generate(void)
  *
  ****************************************************************************/
 
-int files_allocate(FAR struct inode *inode_ptr, int oflags, off_t pos,void* priv, int minfd)
+int files_allocate(struct Vnode *vnode_ptr, int oflags, off_t pos, void *priv, int minfd)
 {
-  FAR struct filelist *list = NULL;
+  struct filelist *list = NULL;
   unsigned int *p = NULL;
   unsigned int mask;
   unsigned int i;
@@ -481,7 +481,7 @@ int files_allocate(FAR struct inode *inode_ptr, int oflags, off_t pos,void* priv
           set_bit(i, bitmap);
           list->fl_files[i].f_oflags   = oflags;
           list->fl_files[i].f_pos      = pos;
-          list->fl_files[i].f_inode    = inode_ptr;
+          list->fl_files[i].f_vnode    = vnode_ptr;
           list->fl_files[i].f_priv     = priv;
           list->fl_files[i].f_refcount = 1;
           list->fl_files[i].f_mapping  = NULL;
@@ -500,19 +500,18 @@ int files_allocate(FAR struct inode *inode_ptr, int oflags, off_t pos,void* priv
       i++;
     }
 
-
   _files_semgive(list);
   return VFS_ERROR;
 }
 
 static int files_close_internal(int fd, LosProcessCB *processCB)
 {
-  FAR struct filelist *list = NULL;
-  int                  ret  = OK;
+  int ret = OK;
+  struct file *filep = NULL;
+  struct filelist *list = NULL;
   struct files_struct *process_files = NULL;
 
   /* 0,1,2 fd is not opened in system, no need to close them */
-
   if ((fd >= STDIN_FILENO) && (fd <= STDERR_FILENO))
     {
       return OK;
@@ -525,9 +524,9 @@ static int files_close_internal(int fd, LosProcessCB *processCB)
   list = sched_getfiles();
   DEBUGASSERT(list != NULL);
 
-  /* If the file was properly opened, there should be an inode assigned */
+  /* If the file was properly opened, there should be an vnode assigned */
 
-  if (fd < 0 || fd >= CONFIG_NFILE_DESCRIPTORS || !list->fl_files[fd].f_inode)
+  if (fd < 0 || fd >= CONFIG_NFILE_DESCRIPTORS || !list->fl_files[fd].f_vnode)
     {
       return -EBADF;
     }
@@ -542,20 +541,18 @@ static int files_close_internal(int fd, LosProcessCB *processCB)
       _files_semgive(list);
       return -EINVAL;
     }
-  if (list->fl_files[fd].f_mapping)
-    {
-      OsFileCacheFlush(list->fl_files[fd].f_mapping);
-      dec_mapping(list->fl_files[fd].f_mapping);
-    }
-  list->fl_files[fd].f_refcount--;
 
   /* The filep->f_refcount may not be zero here, when the filep is shared in parent-child processes.
      so, upon closing the filep in current process, relevant region must be released immediately */
 
-  OsVmmFileRegionFree(&list->fl_files[fd], processCB);
+  filep = &list->fl_files[fd];
 
+  OsVmmFileRegionFree(filep, processCB);
+
+  list->fl_files[fd].f_refcount--;
   if (list->fl_files[fd].f_refcount == 0)
     {
+      dec_mapping_nolock(filep->f_mapping);
       ret = _files_close(&list->fl_files[fd]);
       if (ret == OK)
         {
@@ -594,7 +591,7 @@ int files_close(int fd)
 
 void files_release(int fd)
 {
-  FAR struct filelist *list = NULL;
+  struct filelist *list = NULL;
 
   list = sched_getfiles();
   DEBUGASSERT(list);
@@ -605,7 +602,7 @@ void files_release(int fd)
 
       list->fl_files[fd].f_magicnum = 0;
       list->fl_files[fd].f_oflags   = 0;
-      list->fl_files[fd].f_inode    = NULL;
+      list->fl_files[fd].f_vnode    = NULL;
       list->fl_files[fd].f_pos      = 0;
       list->fl_files[fd].f_refcount = 0;
       list->fl_files[fd].f_path     = NULL;
@@ -613,15 +610,14 @@ void files_release(int fd)
       list->fl_files[fd].f_priv     = NULL;
       list->fl_files[fd].f_mapping  = NULL;
       list->fl_files[fd].f_dir      = NULL;
-
       clear_bit(fd, bitmap);
       _files_semgive(list);
     }
 }
 
-struct inode * files_get_openfile(int fd)
+struct Vnode *files_get_openfile(int fd)
 {
-  FAR struct filelist *list = NULL;
+  struct filelist *list = NULL;
   unsigned int *p = NULL;
   unsigned int mask;
 
@@ -635,12 +631,12 @@ struct inode * files_get_openfile(int fd)
       return NULL;
     }
 
-  return list->fl_files[fd].f_inode;
+  return list->fl_files[fd].f_vnode;
 }
 
 int alloc_fd(int minfd)
 {
-  FAR struct filelist *list = NULL;
+  struct filelist *list = NULL;
   unsigned int *p = NULL;
   unsigned int mask;
   unsigned int i;
@@ -679,16 +675,16 @@ void clear_fd(int fd)
   clear_bit(fd, bitmap);
 }
 
-int close_files(struct inode *inode)
+int close_files(struct Vnode *vnode)
 {
   int fd = 0;
   int ret = 0;
-  FAR struct inode *open_file_inode = NULL;
+  struct Vnode *open_file_vnode = NULL;
 
   for (fd = FILE_START_FD; fd < CONFIG_NFILE_DESCRIPTORS; fd++)
     {
-      open_file_inode = files_get_openfile(fd);
-      if (open_file_inode && (open_file_inode == inode))
+      open_file_vnode = files_get_openfile(fd);
+      if (open_file_vnode && (open_file_vnode == vnode))
         {
           ret = files_close(fd);
           if (ret < 0)

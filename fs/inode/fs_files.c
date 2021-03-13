@@ -55,8 +55,8 @@
 #include "fs/fd_table.h"
 #ifdef LOSCFG_NET_LWIP_SACK
 #include "lwip/sockets.h"
-#include "fs_file.h"
 #endif
+#include "fs_file.h"
 #include "los_process_pri.h"
 #include "los_vm_filemap.h"
 #include "mqueue.h"

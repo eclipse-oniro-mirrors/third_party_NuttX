@@ -88,6 +88,8 @@ NFSMOUNT_HOOK g_NFSMOUNT_HOOK = (NFSMOUNT_HOOK)(UINTPTR)NULL;
 struct nfsstats nfsstats;
 #endif
 
+#define USE_GUARDED_CREATE 1
+
 #ifdef LOSCFG_FS_NFS
 /****************************************************************************
  * Private Type Definitions
@@ -2598,9 +2600,70 @@ int vfs_nfs_truncate(struct Vnode *node, off_t length)
   np->n_size = length;
   return OK;
 }
+
+static int vfs_nfs_unmount(struct Mount *mnt, struct Vnode **blkDriver)
+{
+  (void)blkDriver;
+  struct nfsmount *nmp = (struct nfsmount *)mnt->data;
+  int error;
+
+  DEBUGASSERT(nmp);
+
+  /* Get exclusive access to the mount structure */
+
+  nfs_mux_take(nmp);
+
+  /* Are there any open files?  We can tell if there are open files by looking
+   * at the list of file structures in the mount structure.  If this list
+   * not empty, then there are open files and we cannot unmount now (or a
+   * crash is sure to follow).
+   */
+
+  if (nmp->nm_head != NULL || nmp->nm_dir != NULL)
+    {
+      ferr("ERROR;  There are open files: %p or directories: %p\n", nmp->nm_head, nmp->nm_dir);
+
+      /* This implementation currently only supports unmounting if there are
+       * no open file references.
+       */
+
+      error = EBUSY;
+      goto errout_with_mutex;
+    }
+
+  /* No open file... Umount the file system. */
+
+  error = rpcclnt_umount(nmp->nm_rpcclnt);
+  if (error)
+    {
+      ferr("ERROR: rpcclnt_umount failed: %d\n", error);
+      goto errout_with_mutex;
+    }
+
+  /* Disconnect from the server */
+
+  rpcclnt_disconnect(nmp->nm_rpcclnt);
+
+  /* And free any allocated resources */
+
+  nfs_mux_release(nmp);
+  (void)pthread_mutex_destroy(&nmp->nm_mux);
+  free(nmp->nm_rpcclnt);
+  nmp->nm_rpcclnt = NULL;
+  free(nmp);
+  nmp = NULL;
+
+  return -error;
+
+errout_with_mutex:
+  nfs_mux_release(nmp);
+  return -error;
+}
+
 struct MountOps nfs_mount_operations =
 {
   .Mount = vfs_nfs_mount,
+  .Unmount = vfs_nfs_unmount,
   .Statfs= vfs_nfs_statfs,
 };
 

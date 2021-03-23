@@ -48,9 +48,7 @@
 #include "fs/fs.h"
 
 
-#include "inode/inode.h"
-
-#ifndef CONFIG_DISABLE_MOUNTPOINT
+#include "fs/vnode.h"
 
 /****************************************************************************
  * Public Functions
@@ -66,9 +64,8 @@
  *
  ****************************************************************************/
 
-int file_fsync(FAR struct file *filep)
+int file_fsync(struct file *filep)
 {
-  struct inode *inode;
   int ret;
 
   /* Was this file opened for write access? */
@@ -79,14 +76,12 @@ int file_fsync(FAR struct file *filep)
       goto errout;
     }
 
-  /* Is this inode a registered mountpoint? Does it support the
+  /* Is this vnode a registered mountpoint? Does it support the
    * sync operations may be relevant to device drivers but only
    * the mountpoint operations vtable contains a sync method.
    */
 
-  inode = filep->f_inode;
-  if (!inode || !INODE_IS_MOUNTPT(inode) ||
-      !inode->u.i_mops || !inode->u.i_mops->sync)
+  if (!filep || !filep->ops || !filep->ops->fsync)
     {
       ret = EINVAL;
       goto errout;
@@ -94,7 +89,7 @@ int file_fsync(FAR struct file *filep)
 
   /* Yes, then tell the mountpoint to sync this file */
 
-  ret = inode->u.i_mops->sync(filep);
+  ret = filep->ops->fsync(filep);
   if (ret >= 0)
     {
       return OK;
@@ -111,13 +106,13 @@ errout:
  * Name: fsync
  *
  * Description:
- *   This func simply binds inode sync methods to the sync system call.
+ *   This func simply binds vnode sync methods to the sync system call.
  *
  ****************************************************************************/
 
 int fsync(int fd)
 {
-  FAR struct file *filep;
+  struct file *filep = NULL;
 
   /* Get the file structure corresponding to the file descriptor. */
 
@@ -133,4 +128,3 @@ int fsync(int fd)
   return file_fsync(filep);
 }
 
-#endif /* !CONFIG_DISABLE_MOUNTPOINT */

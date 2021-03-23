@@ -41,9 +41,12 @@
 #include "sys/types.h"
 
 #include "errno.h"
+#include "unistd.h"
+#include "console.h"
 #include "sched.h"
-
-#include "inode/inode.h"
+#include "sys/types.h"
+#include "fs/vnode.h"
+#include "vfs_config.h"
 
 /****************************************************************************
  * Public Functions
@@ -67,7 +70,7 @@
  *
  ****************************************************************************/
 
-int fs_getfilep_normal(int fd, FAR struct file **filep)
+static int fs_getfilep_normal(int fd, struct file **filep)
 {
   struct filelist *list;
 
@@ -102,12 +105,13 @@ int fs_getfilep_normal(int fd, FAR struct file **filep)
   return OK;
 }
 
-int fs_getfilep(int fd, FAR struct file **filep)
+int fs_getfilep(int fd, struct file **filep)
 {
   int ret = fs_getfilep_normal(fd, filep);
   if (ret < 0)
   {
     set_errno(-ret);
+    return VFS_ERROR;
   }
-  return ret;
+  return OK;
 }

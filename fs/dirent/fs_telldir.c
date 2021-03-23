@@ -45,7 +45,6 @@
 #include "fs/fs.h"
 #include "fs/dirent_fs.h"
 
-#include "inode/inode.h"
 
 /****************************************************************************
  * Public Functions

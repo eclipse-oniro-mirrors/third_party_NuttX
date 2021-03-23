@@ -42,35 +42,12 @@
 #include "sys/mount.h"
 #include "errno.h"
 #include "fs/fs.h"
-
-#include "inode/inode.h"
+#include "fs/vnode.h"
 #include "stdlib.h"
-
+#include "unistd.h"
 #include "string.h"
 #include "disk.h"
-
-#ifdef LOSCFG_FS_ZPFS
-#include "vfs_zpfs.h"
-#endif
-/****************************************************************************
- * Pre-processor Definitions
- ****************************************************************************/
-
-/****************************************************************************
- * Private Types
- ****************************************************************************/
-
-/****************************************************************************
- * Private Variables
- ****************************************************************************/
-
-/****************************************************************************
- * Public Data
- ****************************************************************************/
-
-/****************************************************************************
- * Private Functions
- ****************************************************************************/
+#include "fs_other.h"
 
 /****************************************************************************
  * Public Functions
@@ -94,15 +71,26 @@
  *
  ****************************************************************************/
 
+BOOL fs_in_use(struct Mount *mnt, const char *target)
+{
+  char cwd[PATH_MAX];
+  char *pret = getcwd(cwd, PATH_MAX);
+  if (pret != NULL)
+    {
+      if (!strncmp(target, cwd, strlen(target)))
+        {
+          return TRUE;
+        }
+    }
+    return VnodeInUseIter(mnt->vnodeCovered);
+}
+
 int umount(const char *target)
 {
-  FAR struct inode *mountpt_inode = NULL;
-  FAR struct inode *blkdrvr_inode = NULL;
-  int errcode = OK;
-  int status;
-  char *fullpath = NULL;
-  const char *relpath = NULL;
-  struct inode_search_s desc;
+  struct Vnode *mountpt_vnode = NULL;
+  struct Vnode *blkdrvr_vnode = NULL;
+  struct Vnode *covered_vnode = NULL;
+  struct Mount *mnt = NULL;
   int ret;
 #ifdef LOSCFG_FS_ZPFS
   bool isZpfs = false;
@@ -113,117 +101,87 @@ int umount(const char *target)
 
   if (target == NULL)
     {
-      errcode = EFAULT;
-      goto errout;
-    }
-
-  /* Get a absolute path*/
-
-  errcode = vfs_normalize_path((const char *)NULL, target, &fullpath);
-  if (errcode < 0)
-    {
-      errcode = -errcode;
+      ret = -EFAULT;
       goto errout;
     }
 
   /* Find the mountpt */
-  SETUP_SEARCH(&desc, fullpath, false);
-  ret = inode_find(&desc);
-  if (ret < 0)
+  VnodeHold();
+  ret = VnodeLookup(target, &mountpt_vnode, 0);
+  if (ret != OK || !mountpt_vnode)
     {
-      errcode = EACCES;
-      free(fullpath);
       goto errout;
     }
-  mountpt_inode = desc.node;
-  relpath = desc.relpath;
-
-  /* Verify that the inode is a mountpoint */
-
-  if (!INODE_IS_MOUNTPT(mountpt_inode))
+  /* Verify that the vnode is a mountpoint */
+  if (!mountpt_vnode || !(mountpt_vnode->flag & VNODE_FLAG_MOUNT_ORIGIN))
     {
-      errcode = EINVAL;
-      goto errout_with_mountpt;
+      ret = -EINVAL;
+      goto errout;
     }
 
-  /* Verfy the path is a mountpoint path or file path*/
-
-  if ((relpath != NULL) && strlen(relpath))
+  /* Get mount point covered vnode and mount structure */
+  mnt = mountpt_vnode->originMount;
+  if (!mnt)
     {
-      errcode = EPERM;
-      goto errout_with_mountpt;
+      ret = -EINVAL;
+      goto errout;
+    }
+  covered_vnode = mnt->vnodeBeCovered;
+  if (!covered_vnode || !(covered_vnode->flag & VNODE_FLAG_MOUNT_NEW))
+    {
+      ret = -EINVAL;
+      goto errout;
     }
 
   /* Unbind the block driver from the file system (destroying any fs
    * private data.
    */
 
-  if (mountpt_inode->u.i_mops->unbind == NULL)
+  if (mnt->ops == NULL || mnt->ops->Unmount == NULL)
     {
       /* The filesystem does not support the unbind operation ??? */
 
-      errcode = EINVAL;
-      goto errout_with_mountpt;
+      ret = -EINVAL;
+      goto errout;
     }
 
-  inode_semtake(); /* Hold the semaphore through the unbind logic */
-
 #ifdef LOSCFG_FS_ZPFS
-  if (IsZpfsFileSystem(mountpt_inode))
+  if (IsZpfsFileSystem(mountpt_vnode))
     {
       isZpfs = true;
-      zpfsInode.i_private = mountpt_inode->i_private;
-      zpfsInode.u.i_ops = mountpt_inode->u.i_ops;
-      zpfsInode.i_flags = mountpt_inode->i_flags;
+      zpfsInode.i_private = mountpt_vnode->i_private;
+      zpfsInode.u.i_ops = mountpt_vnode->u.i_ops;
+      zpfsInode.i_flags = mountpt_vnode->i_flags;
     }
 #endif
 
-  if (mountpt_inode->i_crefs == 1)
+  /* Release the vnode under the mount point */
+  if (fs_in_use(mnt, target))
     {
-      status = mountpt_inode->u.i_mops->unbind(mountpt_inode->i_private, &blkdrvr_inode);
-      if (status < 0)
-        {
-          /* The inode is unhappy with the blkdrvr for some reason */
-
-          errcode = -status;
-          goto errout_with_semaphore;
-        }
-      else if (status > 0)
-        {
-          errcode = EBUSY;
-          goto errout_with_semaphore;
-        }
-    }
-  else
-    {
-      errcode = EBUSY;
-      goto errout_with_semaphore;
-    }
-  /* Successfully unbound */
-
-  mountpt_inode->i_private = NULL;
-  mountpt_inode->u.i_ops= (const struct file_operations_vfs *)NULL;
-  mountpt_inode->i_flags = 0;
-
-  inode_release(mountpt_inode);
-
-  /* Successfully unbound, remove the mountpoint inode from
-   * the inode tree.  The inode will not be deleted yet because
-   * there is still at least reference on it (from the mount)
-   */
-
-  if (blkdrvr_inode)
-    {
-      blkdrvr_inode->e_status = STAT_UNMOUNTED;
+      ret = -EBUSY;
+      goto errout;
     }
 
-  inode_semgive();
+  ret = VnodeFreeAll(mnt);
+  if (ret != OK)
+    {
+      goto errout;
+    }
+  /* Umount the filesystem */
+  ret = mnt->ops->Unmount(mnt, &blkdrvr_vnode);
+  if (ret != OK)
+    {
+      goto errout;
+    }
+
+  VnodeFree(mountpt_vnode);
+  LOS_ListDelete(&mnt->mountList);
+  free(mnt);
 
   /* Did the unbind method return a contained block driver */
-
-  if (blkdrvr_inode)
+  if (blkdrvr_vnode)
     {
-      inode_release(blkdrvr_inode);
+      ; /* block driver operations after umount */
     }
 
 #ifdef LOSCFG_FS_ZPFS
@@ -232,23 +190,16 @@ int umount(const char *target)
       ZpfsCleanUp((void*)&zpfsInode, fullpath);
     }
 #endif
+  covered_vnode->newMount = NULL;
+  covered_vnode->flag &= ~(VNODE_FLAG_MOUNT_NEW);
+  VnodeDrop();
 
-  free(fullpath);
   return OK;
 
   /* A lot of goto's!  But they make the error handling much simpler */
-
-errout_with_semaphore:
-  inode_semgive();
-errout_with_mountpt:
-  mountpt_inode->i_crefs--;
-  if (blkdrvr_inode)
-    {
-      inode_release(blkdrvr_inode);
-    }
-  free(fullpath);
 errout:
-  set_errno(errcode);
+  VnodeDrop();
+  set_errno(-ret);
   return VFS_ERROR;
 }
 
@@ -261,4 +212,3 @@ int umount2(const char* __target, int __flags)
     }
     return umount(__target);
 }
-

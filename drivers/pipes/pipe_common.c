@@ -66,6 +66,8 @@
 #include "user_copy.h"
 #ifdef LOSCFG_KERNEL_PIPE
 
+#include "fs/vnode.h"
+
 /****************************************************************************
  * Pre-processor Definitions
  ****************************************************************************/
@@ -94,7 +96,7 @@ static void pipecommon_semtake(sem_t *sem);
  * Name: pipecommon_semtake
  ****************************************************************************/
 
-static void pipecommon_semtake(FAR sem_t *sem)
+static void pipecommon_semtake(sem_t *sem)
 {
   int ret;
 
@@ -112,7 +114,7 @@ static void pipecommon_semtake(FAR sem_t *sem)
  * Name: pipecommon_pollnotify
  ****************************************************************************/
 
-static void pipecommon_pollnotify(FAR struct pipe_dev_s *dev,
+static void pipecommon_pollnotify(struct pipe_dev_s *dev,
                                   pollevent_t eventset)
 {
   if (eventset & POLLERR)
@@ -131,9 +133,9 @@ static void pipecommon_pollnotify(FAR struct pipe_dev_s *dev,
  * Name: pipecommon_allocdev
  ****************************************************************************/
 
-FAR struct pipe_dev_s *pipecommon_allocdev(size_t bufsize, const char *name)
+struct pipe_dev_s *pipecommon_allocdev(size_t bufsize, const char *name)
 {
-  FAR struct pipe_dev_s *dev;
+  struct pipe_dev_s *dev = NULL;
   int ret;
 
   if (bufsize > CONFIG_DEV_PIPE_MAXSIZE)
@@ -143,7 +145,7 @@ FAR struct pipe_dev_s *pipecommon_allocdev(size_t bufsize, const char *name)
 
   /* Allocate a private structure to manage the pipe */
 
-  dev = (FAR struct pipe_dev_s *)malloc(sizeof(struct pipe_dev_s));
+  dev = (struct pipe_dev_s *)malloc(sizeof(struct pipe_dev_s));
   if (dev)
     {
       /* Initialize the private structure */
@@ -173,7 +175,7 @@ FAR struct pipe_dev_s *pipecommon_allocdev(size_t bufsize, const char *name)
  * Name: pipecommon_freedev
  ****************************************************************************/
 
-void pipecommon_freedev(FAR struct pipe_dev_s *dev)
+void pipecommon_freedev(struct pipe_dev_s *dev)
 {
   sem_destroy(&dev->d_bfsem);
   sem_destroy(&dev->d_rdsem);
@@ -185,10 +187,10 @@ void pipecommon_freedev(FAR struct pipe_dev_s *dev)
  * Name: pipecommon_open
  ****************************************************************************/
 
-int pipecommon_open(FAR struct file *filep)
+int pipecommon_open(struct file *filep)
 {
-  FAR struct inode      *inode = filep->f_inode;
-  FAR struct pipe_dev_s *dev   = inode->i_private;
+  struct Vnode      *vnode = filep->f_vnode;
+  struct pipe_dev_s *dev   = (struct pipe_dev_s *)((struct drv_data *)vnode->data)->priv;
   int                    sval;
   int                    ret;
 
@@ -213,9 +215,9 @@ int pipecommon_open(FAR struct file *filep)
    * is first opened.
    */
 
-  if (inode->i_crefs == 1 && dev->d_buffer == NULL)
+  if (vnode->useCount == 1 && dev->d_buffer == NULL)
     {
-      dev->d_buffer = (FAR uint8_t *)malloc(dev->d_bufsize);
+      dev->d_buffer = (uint8_t *)malloc(dev->d_bufsize);
       if (!dev->d_buffer)
         {
           (void)sem_post(&dev->d_bfsem);
@@ -285,6 +287,8 @@ int pipecommon_open(FAR struct file *filep)
         }
     }
 
+  vnode->useCount++;
+
   return ret;
 }
 
@@ -292,13 +296,13 @@ int pipecommon_open(FAR struct file *filep)
  * Name: pipecommon_close
  ****************************************************************************/
 
-int pipecommon_close(FAR struct file *filep)
+int pipecommon_close(struct file *filep)
 {
-  FAR struct inode      *inode = filep->f_inode;
-  FAR struct pipe_dev_s *dev   = inode->i_private;
+  struct Vnode      *vnode = filep->f_vnode;
+  struct pipe_dev_s *dev   = (struct pipe_dev_s *)((struct drv_data *)vnode->data)->priv;
   int                    sval;
 
-  if (dev == NULL || filep->f_inode->i_crefs <= 0)
+  if (dev == NULL || filep->f_vnode->useCount <= 1)
     {
       return -EINVAL;
     }
@@ -314,9 +318,9 @@ int pipecommon_close(FAR struct file *filep)
    * still outstanding references to the pipe.
    */
 
-  /* Check if the decremented inode reference count would go to zero */
+  /* Check if the decremented vnode reference count would go to zero */
 
-  if (inode->i_crefs > 1)
+  if (vnode->useCount > 1)
     {
       /* More references.. If opened for writing, decrement the count of
        * writers on the pipe instance.
@@ -380,6 +384,8 @@ int pipecommon_close(FAR struct file *filep)
       dev->d_nreaders = 0;
     }
 
+  vnode->useCount--;
+
   sem_post(&dev->d_bfsem);
   return OK;
 }
@@ -388,11 +394,11 @@ int pipecommon_close(FAR struct file *filep)
  * Name: pipecommon_read
  ****************************************************************************/
 
-ssize_t pipecommon_read(FAR struct file *filep, FAR char *buffer, size_t len)
+ssize_t pipecommon_read(struct file *filep, char *buffer, size_t len)
 {
-  FAR struct inode      *inode  = filep->f_inode;
-  FAR struct pipe_dev_s *dev    = inode->i_private;
-  ssize_t                nread  = 0;
+  struct Vnode      *vnode  = filep->f_vnode;
+  struct pipe_dev_s *dev    = (struct pipe_dev_s *)((struct drv_data *)vnode->data)->priv;
+  ssize_t                nread;
   int                    sval;
   int                    ret;
   volatile int           num;
@@ -548,11 +554,11 @@ ssize_t pipecommon_read(FAR struct file *filep, FAR char *buffer, size_t len)
  * Name: pipecommon_write
  ****************************************************************************/
 
-ssize_t pipecommon_write(FAR struct file *filep, FAR const char *buffer,
+ssize_t pipecommon_write(struct file *filep, const char *buffer,
                          size_t len)
 {
-  FAR struct inode      *inode    = filep->f_inode;
-  FAR struct pipe_dev_s *dev      = inode->i_private;
+  struct Vnode      *vnode    = filep->f_vnode;
+  struct pipe_dev_s *dev      = (struct pipe_dev_s *)((struct drv_data *)vnode->data)->priv;
   ssize_t                nwritten = 0;
   ssize_t                last;
   int                    nxtwrndx;
@@ -710,13 +716,13 @@ ssize_t pipecommon_write(FAR struct file *filep, FAR const char *buffer,
  * Name: pipecommon_poll
  ****************************************************************************/
 
-int pipecommon_poll(FAR struct file *filep, poll_table *table)
+int pipecommon_poll(struct file *filep, poll_table *table)
 {
-  FAR struct inode      *inode    = filep->f_inode;
-  FAR struct pipe_dev_s *dev      = inode->i_private;
+  struct Vnode      *vnode    = filep->f_vnode;
+  struct pipe_dev_s *dev      = (struct pipe_dev_s *)((struct drv_data *)vnode->data)->priv;
   pollevent_t            eventset;
   pipe_ndx_t             nbytes;
-  int                    ret      = OK;
+  int                    ret;
 
   if (dev == NULL || table == NULL)
     {
@@ -787,7 +793,7 @@ int pipecommon_poll(FAR struct file *filep, poll_table *table)
  * Name: pipecommon_ioctl
  ****************************************************************************/
 
-int pipecommon_ioctl(FAR struct file *filep, int cmd, unsigned long arg)
+int pipecommon_ioctl(struct file *filep, int cmd, unsigned long arg)
 {
   return -ENOSYS;
 }
@@ -797,37 +803,29 @@ int pipecommon_ioctl(FAR struct file *filep, int cmd, unsigned long arg)
  ****************************************************************************/
 
 #ifndef CONFIG_DISABLE_PSEUDOFS_OPERATIONS
-int pipecommon_unlink(FAR struct inode *inode)
+int pipecommon_unlink(struct Vnode *vnode)
 {
-  FAR struct pipe_dev_s *dev;
+  struct pipe_dev_s *dev = NULL;
 
-  if (inode == NULL || inode->i_private == NULL)
+  if (vnode == NULL || vnode->data == NULL)
+     {
+      return -EINVAL;
+     }
+
+  dev = ((struct drv_data *)vnode->data)->priv;
+  if (dev == NULL)
     {
       return -EINVAL;
     }
 
-  dev = (FAR struct pipe_dev_s *)inode->i_private;
-
-  /* Are the any open references to the driver? */
-
-  if (inode->i_crefs == 1)
+  if (dev->d_buffer)
     {
-      /* No.. free the buffer (if there is one) */
-
-      if (dev->d_buffer)
-        {
-          free(dev->d_buffer);
-        }
-
-      /* And free the device structure. */
-      unregister_driver(dev->name);
-      pipecommon_freedev(dev);
+      free(dev->d_buffer);
     }
-  else
-    {
-      PRINTK("Device busy!\n");
-      return -EBUSY;
-    }
+
+  /* And free the device structure. */
+  unregister_driver(dev->name);
+  pipecommon_freedev(dev);
 
   return OK;
 }

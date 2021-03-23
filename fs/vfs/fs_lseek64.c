@@ -44,7 +44,7 @@
 #include "sched.h"
 #include "assert.h"
 #include "errno.h"
-#include "inode/inode.h"
+#include "fs/vnode.h"
 
 #if CONFIG_NFILE_DESCRIPTORS > 0
 
@@ -70,37 +70,38 @@
  *
  ****************************************************************************/
 
-off64_t file_seek64(FAR struct file *filep, off64_t offset, int whence)
+off64_t file_seek64(struct file *filep, off64_t offset, int whence)
 {
-  FAR struct inode *inode = NULL;
-  off64_t ret;
+  struct Vnode *vnode = NULL;
   int err = OK;
+  off64_t pos;
 
   DEBUGASSERT(filep);
-  inode =  filep->f_inode;
+  vnode =  filep->f_vnode;
 
-  if (inode == NULL)
+  if (vnode == NULL)
     {
-      err = EBADF;
+      err = -EBADF;
       goto errout;
     }
 
   /* Invoke the file seek method if available */
 
-  if (INODE_IS_MOUNTPT(inode) && inode->u.i_mops && inode->u.i_mops->seek64)
+  if (filep->ops != NULL && filep->ops->seek != NULL)
     {
-      ret = inode->u.i_mops->seek64(filep, offset, whence);
-      if (ret < 0)
+      pos = filep->ops->seek(filep, offset, whence);
+      if (pos < 0)
         {
-          err = -(int)ret;
+          err = pos;
           goto errout;
         }
-      filep->f_pos = ret;
+      else
+        {
+          filep->f_pos = pos;
+        }
     }
   else
-    {
-      /* No... Just set the common file position value */
-
+    {       /* No... Just set the common file position value */
       switch (whence)
         {
           case SEEK_CUR:
@@ -115,17 +116,17 @@ off64_t file_seek64(FAR struct file *filep, off64_t offset, int whence)
               }
             else
               {
-                err = EINVAL;
+                err = -EINVAL;
                 goto errout;
               }
             break;
 
           case SEEK_END:
-            err = ENOSYS;
+            err = -ENOSYS;
             goto errout;
 
           default:
-            err = EINVAL;
+            err = -EINVAL;
             goto errout;
         }
     }
@@ -133,7 +134,7 @@ off64_t file_seek64(FAR struct file *filep, off64_t offset, int whence)
   return filep->f_pos;
 
 errout:
-  set_errno(err);
+  set_errno(-err);
   return (off64_t)VFS_ERROR;
 }
 
@@ -176,7 +177,7 @@ errout:
 
 off64_t lseek64(int fd, off64_t offset, int whence)
 {
-  FAR struct file *filep;
+  struct file *filep;
 
   /* Get the file structure corresponding to the file descriptor. */
 
@@ -191,5 +192,4 @@ off64_t lseek64(int fd, off64_t offset, int whence)
 
   return file_seek64(filep, offset, whence);
 }
-
 #endif

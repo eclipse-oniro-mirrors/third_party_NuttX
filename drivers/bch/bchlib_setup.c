@@ -60,9 +60,9 @@
  *
  ****************************************************************************/
 
-int bchlib_setup(const char *blkdev, bool readonly, FAR void **handle)
+int bchlib_setup(const char *blkdev, bool readonly, void **handle)
 {
-  FAR struct bchlib_s *bch;
+  struct bchlib_s *bch;
   struct geometry geo;
   los_part *part;
   int ret;
@@ -71,26 +71,28 @@ int bchlib_setup(const char *blkdev, bool readonly, FAR void **handle)
 
   /* Allocate the BCH state structure */
 
-  bch = (FAR struct bchlib_s *)zalloc(sizeof(struct bchlib_s));
+  bch = (struct bchlib_s *)zalloc(sizeof(struct bchlib_s));
   if (!bch)
     {
       PRINTK("ERROR: Failed to allocate BCH structure\n");
       return -ENOMEM;
     }
 
-
   /* Open the block driver */
 
-  ret = open_blockdriver(blkdev, readonly ? MS_RDONLY : 0, &bch->inode);
+  ret = open_blockdriver(blkdev, readonly ? MS_RDONLY : 0, &bch->vnode);
   if (ret < 0)
     {
       PRINTK("ERROR: Failed to open driver %s: %d\n", blkdev, -ret);
       goto errout_with_bch;
     }
 
-  DEBUGASSERT(bch->inode && bch->inode->u.i_bops && bch->inode->u.i_bops->geometry);
+  struct drv_data *drv = (struct drv_data *)bch->vnode->data;
+  struct block_operations *bops = (struct block_operations *)drv->ops;
 
-  ret = bch->inode->u.i_bops->geometry(bch->inode, &geo);
+  DEBUGASSERT(bch->vnode && bops && bops->geometry);
+
+  ret = bops->geometry(bch->vnode, &geo);
   if (ret < 0)
     {
       PRINTK("ERROR: geometry failed: %d\n", -ret);
@@ -104,7 +106,7 @@ int bchlib_setup(const char *blkdev, bool readonly, FAR void **handle)
       goto errout_with_bch;
     }
 
-  if (!readonly && (!bch->inode->u.i_bops->write || !geo.geo_writeenabled))
+  if (!readonly && (!bops->write || !geo.geo_writeenabled))
     {
       PRINTK("ERROR: write access not supported\n");
       ret = -EACCES;
@@ -121,7 +123,7 @@ int bchlib_setup(const char *blkdev, bool readonly, FAR void **handle)
   bch->dirty    = false;
   bch->unlinked = false;
 
-  part = los_part_find(bch->inode);
+  part = los_part_find(bch->vnode);
   if (part != NULL)
     {
       bch->sectstart = part->sector_start;
@@ -137,7 +139,7 @@ int bchlib_setup(const char *blkdev, bool readonly, FAR void **handle)
 
   /* Allocate the sector I/O buffer */
 
-  bch->buffer = (FAR uint8_t *)malloc(bch->sectsize);
+  bch->buffer = (uint8_t *)malloc(bch->sectsize);
   if (!bch->buffer)
     {
       PRINTK("ERROR: Failed to allocate sector buffer\n");

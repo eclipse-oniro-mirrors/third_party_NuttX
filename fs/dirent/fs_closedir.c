@@ -38,19 +38,12 @@
  ****************************************************************************/
 
 #include "vfs_config.h"
-
 #include "dirent.h"
 #include "errno.h"
-
 #include "stdlib.h"
 #include "fs/fs.h"
 #include "fs/dirent_fs.h"
-
-#include "inode/inode.h"
-
-/****************************************************************************
- * Private Functions
- ****************************************************************************/
+#include "fs/vnode.h"
 
 /****************************************************************************
  * Public Functions
@@ -73,90 +66,56 @@
  *
  ****************************************************************************/
 
-int closedir(FAR DIR *dirp)
+int closedir(DIR *dirp)
 {
   struct fs_dirent_s *idir = (struct fs_dirent_s *)dirp;
-#ifndef CONFIG_DISABLE_MOUNTPOINT
-  struct inode *inode;
-#endif
+  struct Vnode *vnode = NULL;
   int ret;
 
   /* Verify that we were provided with a valid directory structure */
 
   if (!idir || idir->fd_status != DIRENT_MAGIC)
     {
-      ret = EBADF;
+      ret = -EBADF;
       goto errout;
     }
 
-  /* A special case is when we enumerate an "empty", unused inode.  That is
-   * an inode in the pseudo-filesystem that has no operations and no children.
-   * This is a "dangling" directory entry that has lost its childre.
-   */
-
   if (idir->fd_root)
     {
-      /* This is the 'root' inode of the directory.  This means different
+      /* This is the 'root' vnode of the directory.  This means different
        * things wih different filesystems.
        */
-
-#ifndef CONFIG_DISABLE_MOUNTPOINT
-      inode = idir->fd_root;
-
-      /* The way that we handle the close operation depends on what kind of
-       * root inode we have open.
-       */
-
-      if (INODE_IS_MOUNTPT(inode) && !DIRENT_ISPSEUDONODE(idir->fd_flags))
+      vnode = idir->fd_root;
+      /* Perform the closedir() operation */
+      if (vnode->vop && vnode->vop->Closedir)
         {
-          /* The node is a file system mointpoint. Verify that the
-           * mountpoint supports the closedir() method (not an error if it
-           * does not)
-           */
-
-          if (inode->u.i_mops && inode->u.i_mops->closedir)
+          ret = vnode->vop->Closedir(vnode, idir);
+          if (ret < 0)
             {
-              /* Perform the closedir() operation */
-
-              ret = inode->u.i_mops->closedir(inode, idir);
-              if (ret < 0)
-                {
-                  ret = -ret;
-                  goto errout_with_inode;
-                }
+              goto errout_with_vnode;
             }
         }
       else
-#endif
         {
-          /* The node is part of the root pseudo file system, release
-           * our contained reference to the 'next' inode.
-           */
-
-          if (idir->u.pseudo.fd_next)
-            {
-              inode_release(idir->u.pseudo.fd_next);
-            }
+          ret = -ENOSYS;
+          goto errout_with_vnode;
         }
-
-      /* Release our references on the contained 'root' inode */
-
-      inode_release(idir->fd_root);
+      VnodeHold();
+      vnode->useCount--;
+      VnodeDrop();
     }
 
   /* Then release the container */
 
   idir->fd_status = 0;
   free(idir);
+
   return OK;
 
-#ifndef CONFIG_DISABLE_MOUNTPOINT
-errout_with_inode:
-  inode_release(inode);
+errout_with_vnode:
   free(idir);
-#endif
 
 errout:
-  set_errno(ret);
+  set_errno(-ret);
   return VFS_ERROR;
 }

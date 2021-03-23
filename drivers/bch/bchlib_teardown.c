@@ -40,6 +40,7 @@
 #include <errno.h>
 #include <assert.h>
 #include <debug.h>
+#include "fs/fs.h"
 #include "bch.h"
 
 /****************************************************************************
@@ -55,9 +56,9 @@
  *
  ****************************************************************************/
 
-int bchlib_teardown(FAR void *handle)
+int bchlib_teardown(void *handle)
 {
-  FAR struct bchlib_s *bch = (FAR struct bchlib_s *)handle;
+  struct bchlib_s *bch = (struct bchlib_s *)handle;
 
   DEBUGASSERT(handle);
 
@@ -74,7 +75,7 @@ int bchlib_teardown(FAR void *handle)
 
   /* Close the block driver */
 
-  (void)close_blockdriver(bch->inode);
+  (void)close_blockdriver(bch->vnode);
 
   /* Free the BCH state structure */
 

@@ -161,7 +161,7 @@ ssize_t pipecommon_write(FAR struct file *, FAR const char *, size_t);
 int     pipecommon_ioctl(FAR struct file *filep, int cmd, unsigned long arg);
 int     pipecommon_poll(FAR struct file *filep, poll_table *fds);
 #ifndef CONFIG_DISABLE_PSEUDOFS_OPERATIONS
-int     pipecommon_unlink(FAR struct inode *priv);
+int     pipecommon_unlink(struct Vnode *vnode);
 #endif
 int     pipe_init(void);
 

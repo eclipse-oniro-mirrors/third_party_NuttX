@@ -38,14 +38,13 @@
  ****************************************************************************/
 
 #include "vfs_config.h"
-
 #include "debug.h"
 #include "errno.h"
 #include "fs/fs.h"
-
-#include "inode/inode.h"
+#include "fs/vnode.h"
 #include "driver/driver.h"
 #include "disk.h"
+#include <linux/kernel.h>
 
 /****************************************************************************
  * Public Functions
@@ -55,29 +54,32 @@
  * Name: open_blockdriver
  *
  * Description:
- *   Return the inode of the block driver specified by 'pathname'
+ *   Return the vnode of the block driver specified by 'pathname'
  *
  * Input Parameters:
  *   pathname - the full path to the block driver to be opened
  *   mountflags - if MS_RDONLY is not set, then driver must support write
  *     operations (see include/sys/mount.h)
- *   ppinode - address of the location to return the inode reference
+ *   ppvnode - address of the location to return the vnode reference
  *
  * Returned Value:
  *   Returns zero on success or a negated errno on failure:
  *
- *   EINVAL  - pathname or pinode is NULL
+ *   EINVAL  - pathname or pvnode is NULL
  *   ENOENT  - No block driver of this name is registered
- *   ENOTBLK - The inode associated with the pathname is not a block driver
+ *   ENOTBLK - The vnode associated with the pathname is not a block driver
  *   EACCESS - The MS_RDONLY option was not set but this driver does not
  *     support write access
  *
  ****************************************************************************/
 
-int open_blockdriver(FAR const char *pathname, int mountflags,
-                     FAR struct inode **ppinode)
+
+extern int find_blockdriver(const char *pathname, int mountflags, struct Vnode **vpp);
+
+int open_blockdriver(const char *pathname, int mountflags,
+                     struct Vnode **ppvnode)
 {
-  FAR struct inode *inode_ptr = NULL;
+  struct Vnode *vnode_ptr = NULL;
   los_part *part = NULL;
   los_disk *disk = NULL;
   int ret;
@@ -85,18 +87,18 @@ int open_blockdriver(FAR const char *pathname, int mountflags,
   /* Minimal sanity checks */
 
 #ifdef CONFIG_DEBUG
-  if (ppinode == NULL)
+  if (ppvnode == NULL)
     {
       ret = -EINVAL;
       goto errout;
     }
 #endif
 
-  /* Find the inode associated with this block driver name.  find_blockdriver
+  /* Find the vnode associated with this block driver name.  find_blockdriver
    * will perform all additional error checking.
    */
 
-  ret = find_blockdriver(pathname, mountflags, &inode_ptr);
+  ret = find_blockdriver(pathname, mountflags, &vnode_ptr);
   if (ret < 0)
     {
       fdbg("Failed to file %s block driver\n", pathname);
@@ -108,33 +110,35 @@ int open_blockdriver(FAR const char *pathname, int mountflags,
    * if needed.
    */
 
-  part = los_part_find(inode_ptr);
+  struct drv_data* drv = (struct drv_data*)vnode_ptr->data;
+  struct block_operations *ops = (struct block_operations *)drv->ops;
+
+  part = los_part_find(vnode_ptr);
   if (part != NULL)
     {
       disk = get_disk(part->disk_id);
       if (disk == NULL)
         {
           ret = -EINVAL;
-          goto errout_with_inode;
+          goto errout_with_vnode;
         }
 
       if (pthread_mutex_lock(&disk->disk_mutex) != ENOERR)
         {
           PRINT_ERR("%s %d, mutex lock fail!\n", __FUNCTION__, __LINE__);
-          inode_release(inode_ptr);
           return -1;
         }
       if (disk->disk_status == STAT_INUSED)
         {
 
-          if (inode_ptr->u.i_bops->open != NULL)
+          if (ops->open != NULL)
             {
-              ret = inode_ptr->u.i_bops->open(inode_ptr);
+              ret = ops->open(vnode_ptr);
               if (ret < 0)
                 {
                   fdbg("%s driver open failed\n", pathname);
                   (void)pthread_mutex_unlock(&disk->disk_mutex);
-                  goto errout_with_inode;
+                  goto errout_with_vnode;
                 }
             }
          }
@@ -142,29 +146,27 @@ int open_blockdriver(FAR const char *pathname, int mountflags,
       if (pthread_mutex_unlock(&disk->disk_mutex) != ENOERR)
         {
           PRINT_ERR("%s %d, mutex unlock fail!\n", __FUNCTION__, __LINE__);
-          inode_release(inode_ptr);
           return -1;
         }
 
     }
   else
     {
-      if ((inode_ptr->i_flags & FSNODEFLAG_DELETED) == 0 && inode_ptr->u.i_bops->open != NULL)
+      if (ops->open != NULL)
         {
-          ret = inode_ptr->u.i_bops->open(inode_ptr);
+          ret = ops->open(vnode_ptr);
           if (ret < 0)
             {
               fdbg("%s driver open failed\n", pathname);
-              goto errout_with_inode;
+              goto errout_with_vnode;
             }
         }
     }
 
-  *ppinode = inode_ptr;
+  *ppvnode = vnode_ptr;
   return OK;
 
-errout_with_inode:
-  inode_release(inode_ptr);
+errout_with_vnode:
 errout:
   return ret;
 }

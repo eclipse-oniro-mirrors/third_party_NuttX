@@ -44,7 +44,7 @@
 #include "unistd.h"
 #include "sched.h"
 
-#include "inode/inode.h"
+#include "fs/vnode.h"
 
 #if CONFIG_NFILE_DESCRIPTORS > 0
 
@@ -82,8 +82,8 @@ int fs_dupfd2(int fd1, int fd2)
 int dup2(int fd1, int fd2)
 #endif
 {
-  FAR struct file *filep1;
-  FAR struct file *filep2;
+  struct file *filep1;
+  struct file *filep2;
   int ret;
 
   /* Get the file structures corresponding to the file descriptors. */
@@ -103,7 +103,7 @@ int dup2(int fd1, int fd2)
 
   /* Verify that fd1 is a valid, open file descriptor */
 
-  if (filep1->f_inode == NULL)
+  if (filep1->f_vnode == NULL)
     {
       set_errno(EBADF);
       return VFS_ERROR;

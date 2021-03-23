@@ -43,8 +43,7 @@
 #include "errno.h"
 #include "unistd.h"
 #include "sched.h"
-
-#include "inode/inode.h"
+#include "fs/vnode.h"
 
 /* This logic in this applies only when both socket and file descriptors are
  * in that case, this function descriminates which type of dup2 is being

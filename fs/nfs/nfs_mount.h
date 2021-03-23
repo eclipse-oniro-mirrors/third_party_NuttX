@@ -101,6 +101,9 @@ struct nfsmount
   uint16_t         nm_wsize;                  /* Max size of write RPC */
   uint16_t         nm_readdirsize;            /* Size of a readdir RPC */
   uint16_t         nm_buflen;                 /* Size of I/O buffer */
+  mode_t           nm_permission;
+  uint             nm_gid;
+  uint             nm_uid;
 
   /* Set aside memory on the stack to hold the largest call message.  NOTE
    * that for the case of the write call message, it is the reply message that

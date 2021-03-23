@@ -57,11 +57,11 @@
  * Private Functions
  ****************************************************************************/
 
-static inline int nfs_pathsegment(FAR const char **path, FAR char *buffer,
-                                  FAR char *terminator)
+static inline int nfs_pathsegment(const char **path, char *buffer,
+                                  char *terminator)
 {
-  FAR const char *src = *path;
-  FAR char *dest = buffer;
+  const char *src = *path;
+  char *dest = buffer;
   int nbytes = 0;
   char ch;
 
@@ -177,8 +177,8 @@ int nfs_checkmount(struct nfsmount *nmp)
  ****************************************************************************/
 
 int nfs_request(struct nfsmount *nmp, int procnum,
-                FAR void *request, size_t reqlen,
-                FAR void *response, size_t resplen)
+                void *request, size_t reqlen,
+                void *response, size_t resplen)
 {
   struct rpcclnt *clnt = nmp->nm_rpcclnt;
   struct nfs_reply_header replyh;
@@ -189,7 +189,7 @@ tryagain:
                           request, reqlen, response, resplen);
   if (error != 0)
     {
-      ferr("ERROR: rpcclnt_request failed: %d\n", error);
+      PRINTK("ERROR: rpcclnt_request failed: %d\n", error);
       return error;
     }
 
@@ -213,11 +213,10 @@ tryagain:
           goto tryagain;
         }
 
-      ferr("ERROR: NFS error %d from server\n", error);
+      PRINTK("ERROR: NFS error %d from server\n", error);
       return error;
     }
 
-  finfo("NFS_SUCCESS\n");
   return OK;
 }
 
@@ -235,12 +234,12 @@ tryagain:
  *
  ****************************************************************************/
 
-int nfs_lookup(struct nfsmount *nmp, FAR const char *filename,
-               FAR struct file_handle *fhandle,
-               FAR struct nfs_fattr *obj_attributes,
-               FAR struct nfs_fattr *dir_attributes)
+int nfs_lookup(struct nfsmount *nmp, const char *filename,
+               struct file_handle *fhandle,
+               struct nfs_fattr *obj_attributes,
+               struct nfs_fattr *dir_attributes)
 {
-  FAR uint32_t *ptr;
+  uint32_t *ptr = NULL;
   uint32_t value;
   int reqlen;
   int namelen;
@@ -259,7 +258,7 @@ int nfs_lookup(struct nfsmount *nmp, FAR const char *filename,
 
   /* Initialize the request */
 
-  ptr     = (FAR uint32_t *)&nmp->nm_msgbuffer.lookup.lookup;
+  ptr     = (uint32_t *)&nmp->nm_msgbuffer.lookup.lookup;
   reqlen  = 0;
 
   /* Copy the variable length, directory file handle */
@@ -283,8 +282,8 @@ int nfs_lookup(struct nfsmount *nmp, FAR const char *filename,
 
   nfs_statistics(NFSPROC_LOOKUP);
   error = nfs_request(nmp, NFSPROC_LOOKUP,
-                      (FAR void *)&nmp->nm_msgbuffer.lookup, reqlen,
-                      (FAR void *)nmp->nm_iobuffer, nmp->nm_buflen);
+                      (void *)&nmp->nm_msgbuffer.lookup, reqlen,
+                      (void *)nmp->nm_iobuffer, nmp->nm_buflen);
 
   if (error)
     {
@@ -297,7 +296,7 @@ int nfs_lookup(struct nfsmount *nmp, FAR const char *filename,
    * may differ in size whereas struct rpc_reply_lookup uses a fixed size.
    */
 
-  ptr = (FAR uint32_t *)&((FAR struct rpc_reply_lookup *)nmp->nm_iobuffer)->lookup;
+  ptr = (uint32_t *)&((struct rpc_reply_lookup *)nmp->nm_iobuffer)->lookup;
 
   /* Get the length of the file handle */
 
@@ -355,12 +354,12 @@ int nfs_lookup(struct nfsmount *nmp, FAR const char *filename,
  *
  ****************************************************************************/
 
-int nfs_findnode(struct nfsmount *nmp, FAR const char *relpath,
-                 FAR struct file_handle *fhandle,
-                 FAR struct nfs_fattr *obj_attributes,
-                 FAR struct nfs_fattr *dir_attributes)
+int nfs_findnode(struct nfsmount *nmp, const char *relpath,
+                 struct file_handle *fhandle,
+                 struct nfs_fattr *obj_attributes,
+                 struct nfs_fattr *dir_attributes)
 {
-  FAR const char *path = relpath;
+  const char *path = relpath;
   char            buffer[NAME_MAX + 1];
   char            terminator;
   uint32_t         tmp;
@@ -464,11 +463,11 @@ int nfs_findnode(struct nfsmount *nmp, FAR const char *relpath,
  *
  ****************************************************************************/
 
-int nfs_finddir(struct nfsmount *nmp, FAR const char *relpath,
-                FAR struct file_handle *fhandle,
-                FAR struct nfs_fattr *attributes, FAR char *filename)
+int nfs_finddir(struct nfsmount *nmp, const char *relpath,
+                struct file_handle *fhandle,
+                struct nfs_fattr *attributes, char *filename)
 {
-  FAR const char  *path = relpath;
+  const char  *path = relpath;
   uint32_t         tmp;
   char             terminator;
   int              error;
@@ -553,7 +552,7 @@ int nfs_finddir(struct nfsmount *nmp, FAR const char *relpath,
  *
  ****************************************************************************/
 
-void nfs_attrupdate(FAR struct nfsnode *np, FAR struct nfs_fattr *attributes)
+void nfs_attrupdate(struct nfsnode *np, struct nfs_fattr *attributes)
 {
   struct timespec ts;
 

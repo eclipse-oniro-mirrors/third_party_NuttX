@@ -50,10 +50,12 @@
 #endif
 #include "stdlib.h"
 #include "fs/fs.h"
-
-#include "inode/inode.h"
+#include "fs/vnode.h"
 #include "driver/blockproxy.h"
 #include "fs_other.h"
+#include "fs/vfs_util.h"
+#include "fs/path_cache.h"
+#include "unistd.h"
 
 /****************************************************************************
  * Public Functions
@@ -97,7 +99,7 @@ static int oflag_convert_mode(int oflags)
 
 int get_path_from_fd(int fd, char **path)
 {
-  FAR struct file *file     = NULL;
+  struct file *file     = NULL;
   char            *copypath = NULL;
 
   if (fd == AT_FDCWD)
@@ -111,7 +113,7 @@ int get_path_from_fd(int fd, char **path)
       return -ENOENT;
     }
 
-  if ((file == NULL) || (file->f_inode == NULL) || (file->f_path == NULL))
+  if ((file == NULL) || (file->f_vnode == NULL) || (file->f_path == NULL))
     {
       return -EBADF;
     }
@@ -141,39 +143,190 @@ int get_path_from_fd(int fd, char **path)
   return -ENOENT;
 }
 
-int do_open(int dirfd, const char *path, int oflags, ...)
+static int do_creat(struct Vnode **node, char *fullpath, mode_t mode)
 {
-  FAR struct file *filep        = NULL;
-  FAR struct inode *inode       = NULL;
-  FAR const char *relpath       = NULL;
-  char *fullpath                = NULL;
-  char *relativepath            = NULL;
-  struct inode_search_s desc;
-#if defined(LOSCFG_FILE_MODE) || !defined(CONFIG_DISABLE_MOUNTPOINT)
-  mode_t mode = DEFAULT_FILE_MODE;
-#endif
+  int ret;
+  struct Vnode *parentNode = *node;
+  char *name = strrchr(fullpath, '/') + 1;
+
+  if (parentNode->vop != NULL && parentNode->vop->Create != NULL)
+    {
+      ret = parentNode->vop->Create(parentNode, name, mode, node);
+    }
+  else
+    {
+      ret = -ENOSYS;
+    }
+
+  if (ret < 0)
+    {
+      return ret;
+    }
+
+  struct PathCache *dt = PathCacheAlloc(parentNode, *node, name, strlen(name));
+  if (dt == NULL)
+    {
+      // alloc name cache failed is not a critical problem, let it go.
+      PRINT_ERR("alloc path cache %s failed\n", name);
+    }
+  return OK;
+}
+
+int fp_open(char *fullpath, int oflags, mode_t mode)
+{
   int ret;
   int fd;
-  int acc_mode;
-#ifdef LOSCFG_FILE_MODE
-  /* If the file is opened for creation, then get the mode bits */
+  int accmode;
+  struct file *filep = NULL;
+  struct Vnode *vnode = NULL;
 
-  if ((oflags & (O_WRONLY | O_CREAT)) != 0)
+  VnodeHold();
+  ret = VnodeLookup(fullpath, &vnode, 0);
+  if (ret == OK)
     {
-      va_list ap;
-      va_start(ap, oflags);
-      mode = va_arg(ap, int);
-      va_end(ap);
-      mode &= ~GetUmask();
-      mode &= (S_IRWXU|S_IRWXG|S_IRWXO);
+      /* if file exist */
+      if (vnode->type == VNODE_TYPE_BCHR)
+        {
+          ret = -EINVAL;
+          goto errout_without_count;
+        }
+      if (vnode->type == VNODE_TYPE_BLK) {
+          fd = block_proxy(fullpath, oflags);
+          VnodeDrop();
+          if (fd < 0)
+            {
+              ret = fd;
+              goto errout_without_count;
+            }
+         return fd;
+      }
+      if ((oflags & O_CREAT) && (oflags & O_EXCL))
+        {
+          ret = -EEXIST;
+          VnodeDrop();
+          goto errout_without_count;
+        }
+      if (vnode->type == VNODE_TYPE_DIR)
+        {
+          ret = -EISDIR;
+          VnodeDrop();
+          goto errout_without_count;
+        }
+      accmode = oflag_convert_mode(oflags);
+      if (VfsVnodePermissionCheck(vnode, accmode))
+        {
+          ret = -EACCES;
+          VnodeDrop();
+          goto errout_without_count;
+        }
     }
-#endif
+
+  if ((ret != OK) && (oflags & O_CREAT) && vnode)
+    {
+      /* if file not exist, but parent dir of the file is exist */
+      if (VfsVnodePermissionCheck(vnode, WRITE_OP))
+        {
+          ret = -EACCES;
+          VnodeDrop();
+          goto errout_without_count;
+        }
+      ret = do_creat(&vnode, fullpath, mode);
+      if (ret != OK)
+        {
+          VnodeDrop();
+          goto errout_without_count;
+        }
+    }
+
+  if (ret != OK)
+    {
+      /* found nothing */
+      VnodeDrop();
+      goto errout_without_count;
+    }
+  vnode->useCount++;
+  VnodeDrop();
+
+  if (oflags & O_TRUNC)
+    {
+      if (vnode->useCount > 1)
+        {
+          ret = -EBUSY;
+          goto errout;
+        }
+
+      if (vnode->vop->Truncate)
+        {
+          ret = vnode->vop->Truncate(vnode, 0);
+          if (ret != OK)
+            {
+              goto errout;
+            }
+        }
+      else
+        {
+          ret = -ENOSYS;
+          goto errout;
+        }
+    }
+
+  fd = files_allocate(vnode, oflags, 0, NULL, 3); /* 3: file start fd */
+  if (fd < 0)
+    {
+      ret = -EMFILE;
+      goto errout;
+    }
+
+  /* Get the file structure corresponding to the file descriptor. */
+  ret = fs_getfilep(fd, &filep);
+  if (ret < 0)
+    {
+      files_release(fd);
+      ret = -get_errno();
+      goto errout;
+    }
+
+  filep->f_vnode = vnode;
+  filep->ops = vnode->fop;
+  filep->f_path = fullpath;
+
+  if (filep->ops && filep->ops->open)
+    {
+      ret = filep->ops->open(filep);
+    }
+
+  if (ret < 0)
+    {
+      files_release(fd);
+      goto errout;
+    }
+
+  /* we do not bother to handle the NULL scenario, if so, page-cache feature will not be used
+   * when we do the file fault */
+  add_mapping(filep, fullpath);
+
+  return fd;
+
+errout:
+  VnodeHold();
+  vnode->useCount--;
+  VnodeDrop();
+errout_without_count:
+  set_errno(-ret);
+  return VFS_ERROR;
+}
+
+int do_open(int dirfd, const char *path, int oflags, mode_t mode)
+{
+  int ret;
+  int fd;
+  char *fullpath          = NULL;
+  char *relativepath     = NULL;
 
   /* Get relative path by dirfd*/
   ret = get_path_from_fd(dirfd, &relativepath);
   if (ret < 0)
     {
-      ret = -ret;
       goto errout;
     }
 
@@ -182,132 +335,26 @@ int do_open(int dirfd, const char *path, int oflags, ...)
     {
       free(relativepath);
     }
-
   if (ret < 0)
     {
-      ret = -ret;
       goto errout;
     }
 
-  /* Get an inode for this file */
-  SETUP_SEARCH(&desc, fullpath, false);
-  ret = inode_find(&desc);
-  if (ret < 0)
-    {
-      ret = EACCES;
-      free(fullpath);
-      goto errout;
-    }
-  inode = desc.node;
-  relpath = desc.relpath;
-
-#if !defined(CONFIG_DISABLE_MOUNTPOINT)
-#ifdef LOSCFG_FS_VFS_BLOCK_DEVICE
-  if (INODE_IS_BLOCK(inode))
-    {
-      fd = block_proxy(path, oflags);
-      if (fd < 0)
-        {
-          ret = fd;
-          goto errout_with_inode;
-        }
-
-      inode_release(inode);
-      free(fullpath);
-      return fd;
-    }
-#endif
-#endif
-
-  /* Verify that the inode is valid and either a "normal" character driver or a
-   * mountpoint.  We specifically exclude block drivers and and "special"
-   * inodes (semaphores, message queues, shared memory).
-   */
-
-#ifndef CONFIG_DISABLE_MOUNTPOINT
-  if ((!INODE_IS_DRIVER(inode) && !INODE_IS_MOUNTPT(inode)) || !inode->u.i_ops)
-#else
-  if (!INODE_IS_DRIVER(inode) || !inode->u.i_ops)
-#endif
-    {
-      ret = ENXIO;
-      goto errout_with_inode;
-    }
-
-  /* Associate the inode with a file structure */
-
-  fd = files_allocate(inode, oflags, 0, NULL, 3); /* 3: file start fd */
+  fd = fp_open(fullpath, oflags, mode);
   if (fd < 0)
     {
-      ret = EMFILE;
-      goto errout_with_inode;
+      ret = -get_errno();
+      goto errout;
     }
-
-  /* Get the file structure corresponding to the file descriptor. */
-
-  ret = fs_getfilep(fd, &filep);
-  if (ret < 0)
-    {
-      ret = EPERM;
-
-      /* The errno value has already been set */
-      goto errout_with_fd;
-    }
-
-  /* Perform the driver open operation.  NOTE that the open method may be
-   * called many times.  The driver/mountpoint logic should handled this
-   * because it may also be closed that many times.
-   */
-
-  ret = OK;
-  filep->f_path = fullpath; /* The mem will free in close(fd); */
-  filep->f_relpath = relpath;
-
-  acc_mode = oflag_convert_mode(oflags);
-  if (inode->u.i_ops->open)
-    {
-#ifndef CONFIG_DISABLE_MOUNTPOINT
-      if (INODE_IS_MOUNTPT(inode))
-        {
-          if (VfsPermissionCheck(inode->i_uid, inode->i_gid, inode->i_mode, EXEC_OP))
-            {
-              ret = EACCES;
-              goto errout_with_fd;
-            }
-          ret = inode->u.i_mops->open(filep, relpath, oflags, mode);
-        }
-      else
-#endif
-        {
-          if (VfsPermissionCheck(inode->i_uid, inode->i_gid, inode->i_mode, acc_mode))
-            {
-              ret = EACCES;
-              goto errout_with_fd;
-            }
-          ret = inode->u.i_ops->open(filep);
-        }
-    }
-
-  if (ret < 0)
-    {
-      ret = -ret;
-      goto errout_with_fd;
-    }
-
-  /* we do not bother to handle the NULL scenario, if so, page-cache feature will not be used
-   * when we do the file fault */
-
-  add_mapping(filep, fullpath);
 
   return fd;
 
-errout_with_fd:
-  files_release(fd);
-errout_with_inode:
-  inode_release(inode);
-  free(fullpath);
 errout:
-  set_errno(ret);
+  if (fullpath)
+    {
+      free(fullpath);
+    }
+  set_errno(-ret);
   return VFS_ERROR;
 }
 
@@ -320,43 +367,36 @@ errout:
 
 int open(const char *path, int oflags, ...)
 {
-  mode_t mode = 0666; /* File read-write properties. */
+  mode_t mode = DEFAULT_FILE_MODE; /* File read-write properties. */
 #ifdef LOSCFG_FILE_MODE
   va_list ap;
   va_start(ap, oflags);
   mode = va_arg(ap, int);
   va_end(ap);
+
+  if ((oflags & (O_WRONLY | O_CREAT)) != 0)
+    {
+      mode &= ~GetUmask();
+      mode &= (S_IRWXU|S_IRWXG|S_IRWXO);
+    }
 #endif
+
   return do_open(AT_FDCWD, path, oflags, mode);
 }
 
 int open64 (const char *__path, int __oflag, ...)
 {
-  mode_t mode = 0666; /* File read-write properties. */
+  mode_t mode = DEFAULT_FILE_MODE; /* File read-write properties. */
 #ifdef LOSCFG_FILE_MODE
   va_list ap;
   va_start(ap, __oflag);
   mode = va_arg(ap, int);
   va_end(ap);
+  if ((__oflag & (O_WRONLY | O_CREAT)) != 0)
+    {
+      mode &= ~GetUmask();
+      mode &= (S_IRWXU|S_IRWXG|S_IRWXO);
+    }
 #endif
   return open (__path, ((unsigned int)__oflag) | O_LARGEFILE, mode);
-}
-
-/****************************************************************************
- * Name: openat
- *
- * Description: open by dirfd
- *
- ****************************************************************************/
-
-int openat(int dirfd, const char * path, int oflags, ...)
-{
-  mode_t mode = 0666; /* File read-write properties. */
-#ifdef LOSCFG_FILE_MODE
-  va_list ap;
-  va_start(ap, oflags);
-  mode = va_arg(ap, int);
-  va_end(ap);
-#endif
-  return do_open(dirfd, path, oflags, mode);
 }

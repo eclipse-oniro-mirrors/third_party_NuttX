@@ -43,99 +43,8 @@
 #include "sys/stat.h"
 #include "string.h"
 #include "stdlib.h"
-#include "inode/inode.h"
+#include "fs/vnode.h"
 #include "fs_other.h"
-/****************************************************************************
- * Private Functions
- ****************************************************************************/
-
-/****************************************************************************
- * Name: statpseudo
- ****************************************************************************/
-
-static inline int statpseudo(FAR struct inode *inode, FAR struct stat *buf)
-{
-  /* Most of the stat entries just do not apply */
-
-  (void)memset_s(buf, sizeof(struct stat), 0, sizeof(struct stat));
-
-  buf->st_mode |= inode->i_mode;
-  buf->st_uid = inode->i_uid;
-  buf->st_gid = inode->i_gid;
-  if (INODE_IS_SPECIAL(inode))
-    {
-#if defined(CONFIG_FS_NAMED_SEMAPHORES)
-      if (INODE_IS_NAMEDSEM(inode))
-        {
-          buf->st_mode = S_IFSEM;
-        }
-      else
-#endif
-#if !defined(CONFIG_DISABLE_MQUEUE)
-      if (INODE_IS_MQUEUE(inode))
-        {
-          buf->st_mode = S_IFMQ;
-        }
-      else
-#endif
-#if defined(CONFIG_FS_SHM)
-       if (INODE_IS_SHM(inode))
-        {
-          buf->st_mode = S_IFSHM;
-        }
-      else
-#endif
-       {
-       }
-    }
-  else if (inode->u.i_ops)
-    {
-      /* Determine the type of the inode */
-
-      if (INODE_IS_MOUNTPT(inode))
-        {
-          buf->st_mode |= S_IFDIR;
-        }
-      else if (INODE_IS_BLOCK(inode))
-        {
-          /* What is if also has child inodes? */
-
-          buf->st_mode |= S_IFBLK;
-        }
-      else /* if (INODE_IS_DRIVER(inode)) */
-        {
-          /* What is it if it also has child inodes? */
-
-          buf->st_mode |= S_IFCHR;
-        }
-    }
-  else
-    {
-      /* If it has no operations, then it must just be a intermediate
-       * node in the inode tree.  It is something like a directory.
-       * We'll say that all pseudo-directories are read-able but not
-       * write-able.
-       */
-
-        buf->st_mode |= S_IFDIR | inode->i_mode;
-    }
-
-  return OK;
-}
-
-/****************************************************************************
- * Name: statroot
- ****************************************************************************/
-
-static inline int statroot(FAR struct stat *buf)
-{
-  /* There is no inode associated with the fake root directory */
-
-  (void)memset_s(buf, sizeof(struct stat), 0, sizeof(struct stat));
-  buf->st_mode = S_IFDIR | S_IROTH | S_IRGRP | S_IRUSR;
-  return OK;
-}
-
 /****************************************************************************
  * Global Functions
  ****************************************************************************/
@@ -156,120 +65,64 @@ static inline int statroot(FAR struct stat *buf)
  *
  ****************************************************************************/
 
-int stat(FAR const char *path, FAR struct stat *buf)
+int stat(const char *path, struct stat *buf)
 {
-  FAR struct inode *inode;
-  const char       *relpath   = NULL;
-  int              ret        = OK;
-  char             *fullpath  = NULL;
-  struct inode_search_s desc;
+  struct Vnode *vp = NULL;
+  int ret;
 
   /* Sanity checks */
 
   if (!path || !buf)
     {
-      ret = EFAULT;
+      ret = -EFAULT;
       goto errout;
     }
 
   if (!path[0])
     {
-      ret = ENOENT;
+      ret = -ENOENT;
       goto errout;
     }
 
-  ret = vfs_normalize_path((const char *)NULL, path, &fullpath);
+  /* Get an vnode for this file */
+  VnodeHold();
+  ret = VnodeLookup(path, &vp, 0);
   if (ret < 0)
     {
-      ret = -ret;
+      VnodeDrop();
       goto errout;
     }
 
-  /* Check for the fake root directory (which has no inode) */
-
-  if (strcmp(fullpath, "/") == 0)
-    {
-      free(fullpath);
-      return statroot(buf);
-    }
-
-  /* Get an inode for this file */
-  SETUP_SEARCH(&desc, fullpath, false);
-  ret = inode_find(&desc);
-  if (ret < 0)
-    {
-      ret = EACCES;
-      goto errout_with_path;
-    }
-  inode = desc.node;
-  relpath = desc.relpath;
-
-  /* The way we handle the stat depends on the type of inode that we
+  /* The way we handle the stat depends on the type of vnode that we
    * are dealing with.
    */
 
-#ifndef CONFIG_DISABLE_MOUNTPOINT
-  if (INODE_IS_MOUNTPT(inode))
+  if (vp->vop != NULL && vp->vop->Getattr != NULL)
     {
-      /* The node is a file system mointpoint. Verify that the mountpoint
-       * supports the stat() method
-       */
-
-      if (inode->u.i_mops && inode->u.i_mops->stat)
-        {
-          /* Perform the stat() operation */
-
-          ret = inode->u.i_mops->stat(inode, relpath, buf);
-        }
-      else
-        {
-            ret = ENOSYS;
-        }
+      vp->useCount++;
+      VnodeDrop();
+      ret = vp->vop->Getattr(vp, buf);
+      VnodeHold();
+      vp->useCount--;
+      VnodeDrop();
     }
   else
-#endif
     {
-      if (strlen(relpath) > 0)
-        {
-          ret = ENOENT;
-          goto errout_with_inode;
-        }
-      /* The node is part of the root pseudo file system */
-
-      if (VfsPermissionCheck(desc.parent->i_uid, desc.parent->i_gid, desc.parent->i_mode, EXEC_OP))
-        {
-          ret = EACCES;
-          goto errout_with_inode;
-        }
-      ret = statpseudo(inode, buf);
+      VnodeDrop();
+      ret = -ENOSYS;
+      goto errout;
     }
-
-  /* Check if the stat operation was successful */
 
   if (ret < 0)
     {
-      ret = -ret;
-      goto errout_with_inode;
+      goto errout;
     }
 
-  /* Successfully stat'ed the file */
-
-  inode_release(inode);
-  free(fullpath);
   return OK;
 
  /* Failure conditions always set the errno appropriately */
 
-errout_with_inode:
-  inode_release(inode);
-errout_with_path:
-  free(fullpath);
 errout:
-  set_errno(ret);
+  set_errno(-ret);
   return VFS_ERROR;
-}
-
-int isatty(int fd)
-{
-  return 0;
 }

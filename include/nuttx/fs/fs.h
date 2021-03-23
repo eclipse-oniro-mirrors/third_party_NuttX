@@ -58,6 +58,7 @@
 #include "los_atomic.h"
 #include "semaphore.h"
 #include "los_spinlock.h"
+#include "mount.h"
 
 #ifndef CONFIG_DISABLE_MQUEUE
 #include "mqueue.h"
@@ -158,8 +159,9 @@ extern "C" {
 #define CHG_MTIME 32
 #define CHG_CTIME 64
 
-struct IATTR {
-  /* This structure is used for record inode attr. */
+struct IATTR
+{
+  /* This structure is used for record vnode attr. */
   unsigned int attr_chg_valid;
   unsigned int attr_chg_flags;
   unsigned attr_chg_mode;
@@ -174,7 +176,7 @@ struct IATTR {
 /* Forward references */
 
 struct file;
-struct inode;
+struct Vnode;
 struct stat;
 struct statfs;
 struct pollfd;
@@ -188,25 +190,30 @@ struct file_operations_vfs
 {
   /* The device driver open method differs from the mountpoint open method */
 
-  int     (*open)(FAR struct file *filep);
+  int     (*open)(struct file *filep);
 
   /* The following methods must be identical in signature and position because
    * the struct file_operations and struct mountp_operations are treated like
    * unions.
    */
 
-  int     (*close)(FAR struct file *filep);
-  ssize_t (*read)(FAR struct file *filep, FAR char *buffer, size_t buflen);
-  ssize_t (*write)(FAR struct file *filep, FAR const char *buffer, size_t buflen);
-  off_t   (*seek)(FAR struct file *filep, off_t offset, int whence);
-  int     (*ioctl)(FAR struct file *filep, int cmd, unsigned long arg);
-  int     (*mmap)(FAR struct file* filep, struct VmMapRegion *region);
+  int     (*close)(struct file *filep);
+  ssize_t (*read)(struct file *filep, char *buffer, size_t buflen);
+  ssize_t (*write)(struct file *filep, const char *buffer, size_t buflen);
+  off_t   (*seek)(struct file *filep, off_t offset, int whence);
+  int     (*ioctl)(struct file *filep, int cmd, unsigned long arg);
+  int     (*mmap)(struct file* filep, struct VmMapRegion *region);
   /* The two structures need not be common after this point */
 
 #ifndef CONFIG_DISABLE_POLL
-  int     (*poll)(FAR struct file *filep, poll_table *fds);
+  int     (*poll)(struct file *filep, poll_table *fds);
 #endif
-  int     (*unlink)(FAR struct inode *inode);
+  int     (*stat)(struct file *filep, struct stat* st);
+  int     (*fallocate)(struct file* filep, int mode, off_t offset, off_t len);
+  int     (*fallocate64)(struct file *filep, int mode, off64_t offset, off64_t len);
+  int     (*fsync)(struct file *filep);
+  ssize_t (*readpage)(struct file *filep, char *buffer, size_t buflen);
+  int     (*unlink)(struct Vnode *vnode);
 };
 
 /* This structure provides information about the state of a block driver */
@@ -214,31 +221,119 @@ struct file_operations_vfs
 #ifndef CONFIG_DISABLE_MOUNTPOINT
 struct geometry
 {
-  bool   geo_available;    /* true: The device is available */
-  bool   geo_mediachanged; /* true: The media has changed since last query */
-  bool   geo_writeenabled; /* true: It is okay to write to this device */
+  bool               geo_available;    /* true: The device is available */
+  bool               geo_mediachanged; /* true: The media has changed since last query */
+  bool               geo_writeenabled; /* true: It is okay to write to this device */
   unsigned long long geo_nsectors;     /* Number of sectors on the device */
-  size_t geo_sectorsize;   /* Size of one sector */
+  size_t             geo_sectorsize;   /* Size of one sector */
 };
 
 /* This structure is provided by block devices when they register with the
  * system.  It is used by file systems to perform filesystem transfers.  It
  * differs from the normal driver vtable in several ways -- most notably in
- * that it deals in struct inode vs. struct filep.
+ * that it deals in struct Vnode vs. struct filep.
  */
 
-struct inode;
+struct Vnode;
 struct block_operations
 {
-  int     (*open)(FAR struct inode *inode);
-  int     (*close)(FAR struct inode *inode);
-  ssize_t (*read)(FAR struct inode *inode, FAR unsigned char *buffer,
+  int     (*open)(struct Vnode *vnode);
+  int     (*close)(struct Vnode *vnode);
+  ssize_t (*read)(struct Vnode *vnode, unsigned char *buffer,
             unsigned long long start_sector, unsigned int nsectors);
-  ssize_t (*write)(FAR struct inode *inode, FAR const unsigned char *buffer,
+  ssize_t (*write)(struct Vnode *vnode, const unsigned char *buffer,
             unsigned long long start_sector, unsigned int nsectors);
-  int     (*geometry)(FAR struct inode *inode, FAR struct geometry *geometry);
-  int     (*ioctl)(FAR struct inode *inode, int cmd, unsigned long arg);
-  int     (*unlink)(FAR struct inode *inode);
+  int     (*geometry)(struct Vnode *vnode, struct geometry *geometry);
+  int     (*ioctl)(struct Vnode *vnode, int cmd, unsigned long arg);
+  int     (*unlink)(struct Vnode *vnode);
+};
+
+struct mountpt_operations2
+{
+  /* The mountpoint open method differs from the driver open method
+   * because it receives (1) the vnode that contains the mountpoint
+   * private data, (2) the relative path into the mountpoint, and (3)
+   * information to manage privileges.
+   */
+
+  int     (*open)(struct file *filep, const char *relpath,
+            int oflags, mode_t mode);
+
+  /* The following methods must be identical in signature and position
+   * because the struct file_operations and struct mountpt_operations are
+   * treated like unions.
+   */
+
+  int     (*close)(struct file *filep);
+  ssize_t (*read)(struct file *filep, char *buffer, size_t buflen);
+  ssize_t (*write)(struct file *filep, const char *buffer,
+            size_t buflen);
+  off_t   (*seek)(struct file *filep, off_t offset, int whence);
+  int     (*ioctl)(struct file *filep, int cmd, unsigned long arg);
+  int     (*mmap)(struct file* filep, LosVmMapRegion *region);
+  /* The two structures need not be common after this point. The following
+   * are extended methods needed to deal with the unique needs of mounted
+   * file systems.
+   *
+   * Additional open-file-specific mountpoint operations:
+   */
+
+  int     (*sync)(struct file *filep);
+  int     (*dup)(const struct file *oldp, struct file *newp);
+  int     (*fstat)(const struct file *filep, struct stat *buf);
+  int     (*truncate)(struct file *filep, off_t length);
+
+  /* Directory operations */
+
+  int     (*opendir)(struct Vnode *mountpt, const char *relpath,
+            struct fs_dirent_s *dir);
+  int     (*closedir)(struct Vnode *mountpt,
+            struct fs_dirent_s *dir);
+  int     (*readdir)(struct Vnode *mountpt,
+            struct fs_dirent_s *dir);
+  int     (*rewinddir)(struct Vnode *mountpt,
+            struct fs_dirent_s *dir);
+
+  /* General volume-related mountpoint operations: */
+
+  int     (*bind)(struct Vnode *blkdriver, const void *data, void **handle, const char *realpath);
+  int     (*unbind)(void *handle, struct Vnode **blkdriver);
+  int     (*statfs)(struct Vnode *mountpt, struct statfs *buf);
+  int     (*virstatfs)(struct Vnode *mountpt, const char* relpath, struct statfs *buf);
+
+  /* Operations on paths */
+
+  int     (*unlink)(struct Vnode *mountpt, const char *relpath);
+  int     (*mkdir)(struct Vnode *mountpt, const char *relpath,
+            mode_t mode);
+  int     (*rmdir)(struct Vnode *mountpt, const char *relpath);
+  int     (*rename)(struct Vnode *mountpt, const char *oldrelpath,
+            const char *newrelpath);
+  int     (*stat)(struct Vnode *mountpt, const char *relpath,
+            struct stat *buf);
+  int     (*utime)(struct Vnode *mountpt, const char *relpath,
+            const struct tm *times);
+  int     (*chattr)(struct Vnode *mountpt, const char *relpath,
+            struct IATTR *attr);
+  loff_t   (*seek64)(struct file *filep, loff_t offset, int whence);
+  int     (*getlabel)(void *handle, char* label);
+  int     (*fallocate)(struct file *filep, int mode, off_t offset, off_t len);
+  int     (*fallocate64)(struct file *filep, int mode, off64_t offset, off64_t len);
+  int     (*truncate64)(struct file *filep, off64_t length);
+  int     (*fscheck)(struct Vnode *mountpt, const char *relpath,
+            struct fs_dirent_s *dir);
+  int     (*map_pages)(LosVmMapRegion *region, LosVmPgFault *pgFault);
+  ssize_t (*writepage)(struct file *filep, const char *buffer, size_t buflen);
+  /* NOTE:  More operations will be needed here to support:  disk usage
+   * stats file stat(), file attributes, file truncation, etc.
+   */
+};
+
+struct drv_data
+{
+  const void *ops;
+  mode_t mode;
+  void *priv;
 };
 
 /* This structure is provided by a filesystem to describe a mount point.
@@ -260,94 +355,12 @@ struct page_mapping {
 
 /* map: full_path(owner) <-> mapping */
 struct file_map {
-  LOS_DL_LIST           head;
-  LosMux                lock;         /* lock to protect this mapping */
-  struct page_mapping   mapping;
-  char                  *owner;     /* owner: full path of file */
-};
-
-
-struct mountpt_operations
-{
-  /* The mountpoint open method differs from the driver open method
-   * because it receives (1) the inode that contains the mountpoint
-   * private data, (2) the relative path into the mountpoint, and (3)
-   * information to manage privileges.
-   */
-
-  int     (*open)(FAR struct file *filep, FAR const char *relpath,
-            int oflags, mode_t mode);
-
-  /* The following methods must be identical in signature and position
-   * because the struct file_operations and struct mountpt_operations are
-   * treated like unions.
-   */
-
-  int     (*close)(FAR struct file *filep);
-  ssize_t (*read)(FAR struct file *filep, FAR char *buffer, size_t buflen);
-  ssize_t (*write)(FAR struct file *filep, FAR const char *buffer,
-            size_t buflen);
-  off_t   (*seek)(FAR struct file *filep, off_t offset, int whence);
-  int     (*ioctl)(FAR struct file *filep, int cmd, unsigned long arg);
-  int     (*mmap)(FAR struct file* filep, LosVmMapRegion *region);
-  /* The two structures need not be common after this point. The following
-   * are extended methods needed to deal with the unique needs of mounted
-   * file systems.
-   *
-   * Additional open-file-specific mountpoint operations:
-   */
-
-  int     (*sync)(FAR struct file *filep);
-  int     (*dup)(FAR const struct file *oldp, FAR struct file *newp);
-  int     (*fstat)(FAR const struct file *filep, FAR struct stat *buf);
-  int     (*truncate)(FAR struct file *filep, off_t length);
-
-  /* Directory operations */
-
-  int     (*opendir)(FAR struct inode *mountpt, FAR const char *relpath,
-            FAR struct fs_dirent_s *dir);
-  int     (*closedir)(FAR struct inode *mountpt,
-            FAR struct fs_dirent_s *dir);
-  int     (*readdir)(FAR struct inode *mountpt,
-            FAR struct fs_dirent_s *dir);
-  int     (*rewinddir)(FAR struct inode *mountpt,
-            FAR struct fs_dirent_s *dir);
-
-  /* General volume-related mountpoint operations: */
-
-  int     (*bind)(FAR struct inode *blkdriver, FAR const void *data,
-            FAR void **handle, FAR const char *realpath);
-  int     (*unbind)(FAR void *handle, FAR struct inode **blkdriver);
-  int     (*statfs)(FAR struct inode *mountpt, FAR struct statfs *buf);
-  int     (*virstatfs)(struct inode *mountpt, const char* relpath, struct statfs *buf);
-
-  /* Operations on paths */
-
-  int     (*unlink)(FAR struct inode *mountpt, FAR const char *relpath);
-  int     (*mkdir)(FAR struct inode *mountpt, FAR const char *relpath,
-            mode_t mode);
-  int     (*rmdir)(FAR struct inode *mountpt, FAR const char *relpath);
-  int     (*rename)(FAR struct inode *mountpt, FAR const char *oldrelpath,
-            FAR const char *newrelpath);
-  int     (*stat)(FAR struct inode *mountpt, FAR const char *relpath,
-            FAR struct stat *buf);
-  int     (*utime)(FAR struct inode *mountpt, FAR const char *relpath,
-            FAR const struct tm *times);
-  int     (*chattr)(FAR struct inode *mountpt, FAR const char *relpath,
-            struct IATTR *attr);
-  loff_t   (*seek64)(FAR struct file *filep, loff_t offset, int whence);
-  int     (*getlabel)(FAR void *handle, FAR char* label);
-  int     (*fallocate)(FAR struct file *filep, int mode, off_t offset, off_t len);
-  int     (*fallocate64)(FAR struct file *filep, int mode, off64_t offset, off64_t len);
-  int     (*truncate64)(FAR struct file *filep, off64_t length);
-  int     (*fscheck)(FAR struct inode *mountpt, FAR const char *relpath,
-            FAR struct fs_dirent_s *dir);
-  int     (*map_pages)(LosVmMapRegion *region, LosVmPgFault *pgFault);
-  ssize_t (*readpage)(struct file *filep, char *buffer, size_t buflen);
-  ssize_t (*writepage)(struct file *filep, const char *buffer, size_t buflen);
-  /* NOTE:  More operations will be needed here to support:  disk usage
-   * stats file stat(), file attributes, file truncation, etc.
-   */
+  LOS_DL_LIST                           head;
+  LosMux                                lock;         /* lock to protect this mapping */
+  struct page_mapping                   mapping;
+  int                                   name_len;
+  char                                  *rename;
+  char                                  owner[0];     /* owner: full path of file */
 };
 #endif /* CONFIG_DISABLE_MOUNTPOINT */
 
@@ -366,7 +379,7 @@ typedef struct virtual_partition_info
 struct fsmap_t
 {
   const char                      *fs_filesystemtype;
-  const struct mountpt_operations *fs_mops;
+  const struct                    MountOps *fs_mops;
   const BOOL                      is_mtd_support;
   const BOOL                      is_bdfs;
 };
@@ -391,25 +404,10 @@ struct fsmap_t _l LOS_HAL_TABLE_ENTRY(fsmap) =  \
  */
 
 /* These are the various kinds of operations that can be associated with
- * an inode.
+ * an vnode.
  */
 
-union inode_ops_u
-{
-  FAR const struct file_operations_vfs  *i_ops;        /* Driver operations for inode */
-#ifndef CONFIG_DISABLE_MOUNTPOINT
-  FAR const struct block_operations     *i_bops;       /* Block driver operations */
-  FAR const struct mountpt_operations   *i_mops;       /* Operations on a mountpoint */
-#endif
-#ifdef CONFIG_FS_NAMED_SEMAPHORES
-  FAR struct nsem_inode_s               *i_nsem;       /* Named semaphore */
-#endif
-#ifndef CONFIG_DISABLE_MQUEUE
-  FAR struct mqueue_inode_s             *i_mqueue;     /* POSIX message queue */
-#endif
-};
-
-/* This structure represents one inode in the NuttX pseudo-file system */
+/* This structure represents one vnode in the NuttX pseudo-file system */
 
 typedef enum mount_status
 {
@@ -417,36 +415,19 @@ typedef enum mount_status
   STAT_MOUNTED,
 } MOUNT_STATE;
 
-struct inode
-{
-  FAR struct inode *i_peer;     /* Link to same level inode */
-  FAR struct inode *i_child;    /* Link to lower level inode */
-  int16_t           i_crefs;    /* References to inode */
-  uint16_t          i_flags;    /* Flags for inode */
-  unsigned long     mountflags; /* Flags for mount */
-  union inode_ops_u u;          /* Inode operations */
-#ifdef LOSCFG_FILE_MODE
-  unsigned int      i_uid;
-  unsigned int      i_gid;
-  mode_t            i_mode;     /* Access mode flags */
-#endif
-  FAR void         *i_private;  /* Per inode driver private data */
-  MOUNT_STATE       e_status;
-  char              i_name[1];  /* Name of inode (variable) */
-};
 
-#define FSNODE_SIZE(n) (sizeof(struct inode) + (n))
+#define FSNODE_SIZE(n) (sizeof(struct Vnode) + (n))
 
 /* This is the underlying representation of an open file.  A file
  * descriptor is an index into an array of such types. The type associates
- * the file descriptor to the file state and to a set of inode operations.
+ * the file descriptor to the file state and to a set of vnode operations.
  */
 
 struct file
 {
   unsigned int         f_magicnum;  /* file magic number */
   int                  f_oflags;    /* Open mode flags */
-  FAR struct inode     *f_inode;    /* Driver interface */
+  struct Vnode         *f_vnode;    /* Driver interface */
   loff_t               f_pos;       /* File position */
   unsigned long        f_refcount;  /* reference count */
   char                 *f_path;     /* File fullpath */
@@ -454,6 +435,8 @@ struct file
   const char           *f_relpath;  /* realpath */
   struct page_mapping  *f_mapping;  /* mapping file to memory */
   void                 *f_dir;      /* DIR struct for iterate the directory if open a directory */
+  const struct file_operations_vfs *ops;
+  int fd;
 };
 
 /* This defines a list of files indexed by the file descriptor */
@@ -502,10 +485,10 @@ struct file_struct
   sem_t              fs_sem;       /* For thread safety */
   pid_t              fs_holder;    /* Holder of sem */
   int                fs_counts;    /* Number of times sem is held */
-  FAR unsigned char *fs_bufstart;  /* Pointer to start of buffer */
-  FAR unsigned char *fs_bufend;    /* Pointer to 1 past end of buffer */
-  FAR unsigned char *fs_bufpos;    /* Current position in buffer */
-  FAR unsigned char *fs_bufread;   /* Pointer to 1 past last buffered read char. */
+  unsigned char *fs_bufstart;  /* Pointer to start of buffer */
+  unsigned char *fs_bufend;    /* Pointer to 1 past end of buffer */
+  unsigned char *fs_bufpos;    /* Current position in buffer */
+  unsigned char *fs_bufread;   /* Pointer to 1 past last buffered read char. */
 #endif
   uint16_t           fs_oflags;    /* Open mode flags */
   uint8_t            fs_flags;     /* Stream flags */
@@ -539,21 +522,21 @@ void fs_initialize(void);
  * Name: register_driver
  *
  * Description:
- *   Register a character driver inode the pseudo file system.
+ *   Register a character driver vnode the pseudo file system.
  *
  * Input Parameters:
- *   path - The path to the inode to create
+ *   path - The path to the vnode to create
  *   fops - The file operations structure
  *   mode - Access privileges (not used)
- *   priv - Private, user data that will be associated with the inode.
+ *   priv - Private, user data that will be associated with the vnode.
  *
  * Returned Value:
- *   Zero on success (with the inode point in 'inode'); A negated errno
+ *   Zero on success (with the vnode point in 'vnode'); A negated errno
  *   value is returned on a failure (all error values returned by
- *   inode_reserve):
+ *   vnode_reserve):
  *
  *   EINVAL - 'path' is invalid for this operation
- *   EEXIST - An inode already exists at 'path'
+ *   EEXIST - An vnode already exists at 'path'
  *   ENOMEM - Failed to allocate in-memory resources for the operation
  *
  * Attention:
@@ -565,15 +548,15 @@ void fs_initialize(void);
  *
  ****************************************************************************/
 
-int register_driver(FAR const char *path,
-                    FAR const struct file_operations_vfs *fops, mode_t mode,
-                    FAR void *priv);
+int register_driver(const char *path,
+                    const struct file_operations_vfs *fops, mode_t mode,
+                    void *priv);
 
 /****************************************************************************
  * Name: register_blockdriver
  *
  * Description:
- *   Register a block driver inode the pseudo file system.
+ *   Register a block driver vnode the pseudo file system.
  *
  * Attention:
  *   This function should be called after los_vfs_init has been called.
@@ -583,38 +566,38 @@ int register_driver(FAR const char *path,
  *   The bops must pointed the right functions, otherwise the system will crash when the device is being operated.
  *
  * Input Parameters:
- *   path - The path to the inode to create
+ *   path - The path to the vnode to create
  *   bops - The block driver operations structure
  *   mode - Access privileges (not used)
- *   priv - Private, user data that will be associated with the inode.
+ *   priv - Private, user data that will be associated with the vnode.
  *
  * Returned Value:
- *   Zero on success (with the inode point in 'inode'); A negated errno
+ *   Zero on success (with the vnode point in 'vnode'); A negated errno
  *   value is returned on a failure (all error values returned by
- *   inode_reserve):
+ *   vnode_reserve):
  *
  *   EINVAL - 'path' is invalid for this operation
- *   EEXIST - An inode already exists at 'path'
+ *   EEXIST - An vnode already exists at 'path'
  *   ENOMEM - Failed to allocate in-memory resources for the operation
  *
  ****************************************************************************/
 
 #ifndef CONFIG_DISABLE_MOUNTPOINT
-int register_blockdriver(FAR const char *path,
-                         FAR const struct block_operations *bops,
-                         mode_t mode, FAR void *priv);
+int register_blockdriver(const char *path,
+                         const struct block_operations *bops,
+                         mode_t mode, void *priv);
 #endif
 
 /****************************************************************************
  * Name: unregister_driver
  *
  * Description:
- *   Remove the character driver inode at 'path' from the pseudo-file system
+ *   Remove the character driver vnode at 'path' from the pseudo-file system
  *
  * Returned Value:
- *   Zero on success (with the inode point in 'inode'); A negated errno
+ *   Zero on success (with the vnode point in 'vnode'); A negated errno
  *   value is returned on a failure (all error values returned by
- *   inode_reserve):
+ *   vnode_reserve):
  *
  *   EBUSY - Resource is busy ,not permit for this operation.
  *   ENOENT - 'path' is invalid for this operation.
@@ -626,21 +609,21 @@ int register_blockdriver(FAR const char *path,
  *   The block device node referred by parameter path must be really exist.
  ****************************************************************************/
 
-int unregister_driver(FAR const char *path);
+int unregister_driver(const char *path);
 
 /****************************************************************************
  * Name: unregister_blockdriver
  *
  * Description:
- *   Remove the block driver inode at 'path' from the pseudo-file system
+ *   Remove the block driver vnode at 'path' from the pseudo-file system
  *
  * Input Parameters:
- *   path - The path that the inode to be destroyed.
+ *   path - The path that the vnode to be destroyed.
  *
  * Returned Value:
- *   Zero on success (with the inode point in 'inode'); A negated errno
+ *   Zero on success (with the vnode point in 'vnode'); A negated errno
  *   value is returned on a failure (all error values returned by
- *   inode_reserve):
+ *   vnode_reserve):
  *
  *   EBUSY - Resource is busy ,not permit for this operation.
  *   ENOENT - 'path' is invalid for this operation.
@@ -653,7 +636,7 @@ int unregister_driver(FAR const char *path);
  *
  ****************************************************************************/
 
-int unregister_blockdriver(FAR const char *path);
+int unregister_blockdriver(const char *path);
 
 /****************************************************************************
  * Name: files_initlist
@@ -664,7 +647,7 @@ int unregister_blockdriver(FAR const char *path);
  ****************************************************************************/
 
 #if CONFIG_NFILE_DESCRIPTORS > 0
-void files_initlist(FAR struct filelist *list);
+void files_initlist(struct filelist *list);
 #endif
 
 /****************************************************************************
@@ -676,14 +659,14 @@ void files_initlist(FAR struct filelist *list);
  ****************************************************************************/
 
 #if CONFIG_NFILE_DESCRIPTORS > 0
-void files_releaselist(FAR struct filelist *list);
+void files_releaselist(struct filelist *list);
 #endif
 
 /****************************************************************************
  * Name: file_dup2
  *
  * Description:
- *   Assign an inode to a specific files structure.  This is the heart of
+ *   Assign an vnode to a specific files structure.  This is the heart of
  *   dup2.
  *
  *   Equivalent to the non-standard fs_dupfd2() function except that it
@@ -697,7 +680,7 @@ void files_releaselist(FAR struct filelist *list);
  ****************************************************************************/
 
 #if CONFIG_NFILE_DESCRIPTORS > 0
-int file_dup2(FAR struct file *filep1, FAR struct file *filep2);
+int file_dup2(struct file *filep1, struct file *filep2);
 #endif
 
 /****************************************************************************
@@ -738,7 +721,7 @@ int fs_dupfd(int fd, int minfd);
  *
  ****************************************************************************/
 
-int file_dup(FAR struct file *filep, int minfd);
+int file_dup(struct file *filep, int minfd);
 
 /****************************************************************************
  * Name: fs_dupfd2 OR dup2
@@ -768,49 +751,79 @@ int fs_dupfd2(int fd1, int fd2);
  * Name: open_blockdriver
  *
  * Description:
- *   Return the inode of the block driver specified by 'pathname'
+ *   Return the vnode of the block driver specified by 'pathname'
  *
  * Input Parameters:
  *   pathname - the full path to the block driver to be opened
  *   mountflags - if MS_RDONLY is not set, then driver must support write
  *     operations (see include/sys/mount.h)
- *   ppinode - address of the location to return the inode reference
+ *   ppvnode - address of the location to return the vnode reference
  *
  * Returned Value:
  *   Returns zero on success or a negated errno on failure:
  *
- *   EINVAL  - pathname or pinode is NULL
+ *   EINVAL  - pathname or pvnode is NULL
  *   ENOENT  - No block driver of this name is registered
- *   ENOTBLK - The inode associated with the pathname is not a block driver
+ *   ENOTBLK - The vnode associated with the pathname is not a block driver
  *   EACCESS - The MS_RDONLY option was not set but this driver does not
  *     support write access
  *
  * Aattention:
  *   The parameter path must point a valid string, which end with the terminating null byte.
  *   The total length of parameter path must less than the value defined by PATH_MAX.
- *   The parameter ppinode must point a valid memory, which size must be enough for storing struct inode.
+ *   The parameter ppvnode must point a valid memory, which size must be enough for storing struct Vnode.
 
  ****************************************************************************/
 
 #if CONFIG_NFILE_DESCRIPTORS > 0
-int open_blockdriver(FAR const char *pathname, int mountflags,
-                     FAR struct inode **ppinode);
+int open_blockdriver(const char *pathname, int mountflags,
+                     struct Vnode **ppvnode);
 #endif
+
+/****************************************************************************
+ * Public Function Prototypes
+ ****************************************************************************/
+
+/****************************************************************************
+ * Name: find_blockdriver
+ *
+ * Description:
+ *   Return the inode of the block driver specified by 'pathname'
+ *
+ * Input Parameters:
+ *   pathname   - The full path to the block driver to be located
+ *   mountflags - If MS_RDONLY is not set, then driver must support write
+ *                operations (see include/sys/mount.h)
+ *   ppinode    - Address of the location to return the inode reference
+ *
+ * Returned Value:
+ *   Returns zero on success or a negated errno on failure:
+ *
+ *   ENOENT  - No block driver of this name is registered
+ *   ENOTBLK - The inode associated with the pathname is not a block driver
+ *   EACCESS - The MS_RDONLY option was not set but this driver does not
+ *             support write access
+ *
+ ****************************************************************************/
+
+int find_blockdriver(const char *pathname, int mountflags,
+                     struct Vnode **vpp);
+
 
 /****************************************************************************
  * Name: close_blockdriver
  *
  * Description:
- *   Call the close method and release the inode
+ *   Call the close method and release the vnode
  *
  * Input Parameters:
- *   inode - reference to the inode of a block driver opened by open_blockdriver
+ *   vnode - reference to the vnode of a block driver opened by open_blockdriver
  *
  * Returned Value:
  *   Returns zero on success or a negated errno on failure:
  *
- *   EINVAL  - inode is NULL
- *   ENOTBLK - The inode is not a block driver
+ *   EINVAL  - vnode is NULL
+ *   ENOTBLK - The vnode is not a block driver
  *
  * Attention:
  *   This function should be called after open_blockdriver has been called.
@@ -818,7 +831,7 @@ int open_blockdriver(FAR const char *pathname, int mountflags,
  ****************************************************************************/
 
 #if CONFIG_NFILE_DESCRIPTORS > 0
-int close_blockdriver(FAR struct inode *inode);
+int close_blockdriver(struct Vnode *vnode);
 #endif
 
 /****************************************************************************
@@ -865,7 +878,7 @@ int fs_ioctl(int fd, int req, unsigned long arg);
 
 #if CONFIG_NFILE_STREAMS > 0
 struct tcb_s; /* Forward reference */
-FAR struct file_struct *fs_fdopen(int fd, int oflags);
+struct file_struct *fs_fdopen(int fd, int oflags);
 #endif
 
 /****************************************************************************
@@ -878,7 +891,7 @@ FAR struct file_struct *fs_fdopen(int fd, int oflags);
  ****************************************************************************/
 
 #if CONFIG_NFILE_STREAMS > 0
-int lib_flushall(FAR struct streamlist *list);
+int lib_flushall(struct streamlist *list);
 #endif
 
 /****************************************************************************
@@ -912,7 +925,7 @@ ssize_t lib_sendfile(int outfd, int infd, off_t *offset, size_t count);
  ****************************************************************************/
 
 #if CONFIG_NFILE_DESCRIPTORS > 0
-int fs_getfilep(int fd, FAR struct file **filep);
+int fs_getfilep(int fd, struct file **filep);
 #endif
 
 /****************************************************************************
@@ -939,7 +952,7 @@ int fs_getfilep(int fd, FAR struct file **filep);
  ****************************************************************************/
 
 #if CONFIG_NFILE_DESCRIPTORS > 0
-ssize_t file_read(FAR struct file *filep, FAR void *buf, size_t nbytes);
+ssize_t file_read(struct file *filep, void *buf, size_t nbytes);
 #endif
 
 /****************************************************************************
@@ -953,7 +966,7 @@ ssize_t file_read(FAR struct file *filep, FAR void *buf, size_t nbytes);
  ****************************************************************************/
 
 #if CONFIG_NFILE_DESCRIPTORS > 0
-ssize_t file_write(FAR struct file *filep, FAR const void *buf, size_t nbytes);
+ssize_t file_write(struct file *filep, const void *buf, size_t nbytes);
 #endif
 
 /****************************************************************************
@@ -967,7 +980,7 @@ ssize_t file_write(FAR struct file *filep, FAR const void *buf, size_t nbytes);
  ****************************************************************************/
 
 #if CONFIG_NFILE_DESCRIPTORS > 0
-ssize_t file_pread(FAR struct file *filep, FAR void *buf, size_t nbytes,
+ssize_t file_pread(struct file *filep, void *buf, size_t nbytes,
                    off_t offset);
 #endif
 
@@ -982,7 +995,7 @@ ssize_t file_pread(FAR struct file *filep, FAR void *buf, size_t nbytes,
  ****************************************************************************/
 
 #if CONFIG_NFILE_DESCRIPTORS > 0
-ssize_t file_pwrite(FAR struct file *filep, FAR const void *buf,
+ssize_t file_pwrite(struct file *filep, const void *buf,
                     size_t nbytes, off_t offset);
 #endif
 
@@ -997,7 +1010,7 @@ ssize_t file_pwrite(FAR struct file *filep, FAR const void *buf,
  ****************************************************************************/
 
 #if CONFIG_NFILE_DESCRIPTORS > 0
-off_t file_seek(FAR struct file *filep, off_t offset, int whence);
+off_t file_seek(struct file *filep, off_t offset, int whence);
 #endif
 
 /****************************************************************************
@@ -1011,7 +1024,7 @@ off_t file_seek(FAR struct file *filep, off_t offset, int whence);
  ****************************************************************************/
 
 #if CONFIG_NFILE_DESCRIPTORS > 0
-int file_fsync(FAR struct file *filep);
+int file_fsync(struct file *filep);
 #endif
 
 /****************************************************************************
@@ -1034,7 +1047,7 @@ int file_fsync(FAR struct file *filep);
  ****************************************************************************/
 
 #if CONFIG_NFILE_DESCRIPTORS > 0
-int file_vfcntl(FAR struct file *filep, int cmd, va_list ap);
+int file_vfcntl(struct file *filep, int cmd, va_list ap);
 #endif
 
 /****************************************************************************
@@ -1048,8 +1061,56 @@ int file_vfcntl(FAR struct file *filep, int cmd, va_list ap);
  ****************************************************************************/
 
 #if CONFIG_NFILE_DESCRIPTORS > 0
-off64_t file_seek64(FAR struct file *filep, off64_t offset, int whence);
+off64_t file_seek64(struct file *filep, off64_t offset, int whence);
 #endif
+
+/****************************************************************************
+ * Name: files_allocate
+ *
+ * Description:
+ *   Allocate a struct files instance and associate it with an vnode instance.
+ *   Returns the file descriptor == index into the files array.
+ *
+ ****************************************************************************/
+
+int files_allocate(struct Vnode *vnode, int oflags, off_t pos,void *priv, int minfd);
+
+/****************************************************************************
+ * Name: files_close
+ *
+ * Description:
+ *   Close an vnode (if open)
+ *
+ * Assumuptions:
+ *   Caller holds the list semaphore because the file descriptor will be freed.
+ *
+ ****************************************************************************/
+
+int files_close(int fd);
+
+/****************************************************************************
+ * Name: files_release
+ *
+ * Assumuptions:
+ *   Similar to files_close().  Called only from open() logic on error
+ *   conditions.
+ *
+ ****************************************************************************/
+
+void files_release(int fd);
+
+/****************************************************************************
+ * Name: files_initialize
+ *
+ * Description:
+ *   This is called from the FS initialization logic to configure the files.
+ *
+ ****************************************************************************/
+
+void weak_function files_initialize(void);
+
+int vfs_normalize_path(const char *directory, const char *filename, char **pathname);
+int vfs_normalize_pathat(int fd, const char *filename, char **pathname);
 
 #ifdef __cplusplus
 #if __cplusplus

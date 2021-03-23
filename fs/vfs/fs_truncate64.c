@@ -45,7 +45,7 @@
 #include "assert.h"
 #include "errno.h"
 
-#include "inode/inode.h"
+#include "fs/vnode.h"
 
 /****************************************************************************
  * Name: file_truncate
@@ -57,29 +57,28 @@
  *
  ****************************************************************************/
 
-static int file_truncate64(FAR struct file *filep, off64_t length)
+static int file_truncate64(struct file *filep, off64_t length)
 {
-  FAR struct inode *inode = NULL;
-  int ret;
+  struct Vnode *vnode = NULL;
   int err;
 
   /* Was this file opened for write access? */
 
   if (((unsigned int)(filep->f_oflags) & O_ACCMODE) == O_RDONLY)
     {
-      err = EACCES;
+      err = -EACCES;
       goto errout;
     }
 
-  /* Is this inode a registered mountpoint? Does it support the
+  /* Is this vnode a registered mountpoint? Does it support the
    * truncate operations may be relevant to device drivers but only
    * the mountpoint operations vtable contains a truncate method.
    */
 
-  inode = filep->f_inode;
-  if (!inode || !inode->u.i_mops || !inode->u.i_mops->truncate64)
+  vnode = filep->f_vnode;
+  if (!vnode || !vnode->vop || !vnode->vop->Truncate64)
     {
-      err = EBADF;
+      err = -ENOSYS;
       goto errout;
     }
 
@@ -87,17 +86,16 @@ static int file_truncate64(FAR struct file *filep, off64_t length)
    * a write-able file system.
    */
 
-  ret = inode->u.i_mops->truncate64(filep, length);
-  if (ret < 0)
+  err = vnode->vop->Truncate64(vnode, length);
+  if (err < 0)
     {
-      err = -ret;
       goto errout;
     }
 
-  return ret;
+  return OK;
 
 errout:
-  set_errno(err);
+  set_errno(-err);
   return VFS_ERROR;
 }
 
@@ -137,7 +135,7 @@ errout:
 int ftruncate64(int fd, off64_t length)
 {
 #if CONFIG_NFILE_DESCRIPTORS > 0
-  FAR struct file *filep = NULL;
+  struct file *filep = NULL;
 #endif
 
   /* Did we get a valid file descriptor? */
@@ -172,22 +170,4 @@ int ftruncate64(int fd, off64_t length)
 
   return file_truncate64(filep, length);
 #endif
-}
-
-int truncate64(const char *path, off64_t length)
-{
-  int fd;
-  int ret;
-
-  fd = open(path, O_RDWR);
-  if (fd == VFS_ERROR)
-    {
-      /* The errno value has already been set */
-      return VFS_ERROR;
-    }
-
-  ret = ftruncate64(fd, length);
-  close(fd);
-
-  return ret;
 }

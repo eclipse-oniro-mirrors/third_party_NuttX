@@ -44,7 +44,7 @@
 #include "sched.h"
 
 #include "fs/fs.h"
-#include "inode/inode.h"
+#include "fs/vnode.h"
 #include "net/net.h"
 
 /****************************************************************************

@@ -43,47 +43,24 @@
 #include "sys/stat.h"
 #include "fs/fs.h"
 #include "stdlib.h"
-#include "inode/inode.h"
+#include "fs/vnode.h"
 #include "string.h"
 #include "fs_other.h"
 #include "capability_api.h"
-/****************************************************************************
- * Pre-processor Definitions
- ****************************************************************************/
-
-#undef FS_HAVE_WRITABLE_MOUNTPOINT
-#if !defined(CONFIG_DISABLE_MOUNTPOINT) && defined(CONFIG_FS_WRITABLE) && \
-    CONFIG_NFILE_STREAMS > 0
-#  define FS_HAVE_WRITABLE_MOUNTPOINT 1
-#endif
-
-#undef FS_HAVE_PSEUDOFS_OPERATIONS
-#if !defined(CONFIG_DISABLE_PSEUDOFS_OPERATIONS) && CONFIG_NFILE_STREAMS > 0
-#  define FS_HAVE_PSEUDOFS_OPERATIONS 1
-#endif
-
-#undef FS_HAVE_MKDIR
-#if defined(FS_HAVE_WRITABLE_MOUNTPOINT) || defined(FS_HAVE_PSEUDOFS_OPERATIONS)
-#  define FS_HAVE_MKDIR 1
-#endif
-
-#ifdef FS_HAVE_MKDIR
+#include "fs/path_cache.h"
+#include "fs/vfs_util.h"
 
 /****************************************************************************
  * Private Functions
  ****************************************************************************/
 int do_mkdir(int dirfd, const char *pathname, mode_t mode)
 {
-  FAR struct inode *inode;
-  FAR struct inode *pathnode;
-  const char       *relpath      = NULL;
-  int               errcode;
-  int               ret;
-  char             *fullpath     = NULL;
-  char             *relativepath = NULL;
-  struct inode_search_s desc;
-  uint c_uid = OsCurrUserGet()->effUserID;
-  uint c_gid = OsCurrUserGet()->effGid;
+  struct Vnode *parentVnode = NULL;
+  struct Vnode *vnode = NULL;
+  int ret;
+  char *fullpath = NULL;
+  char *relativepath = NULL;
+  char *dirname = NULL;
 
   mode &= ~GetUmask();
   mode &= (S_IRWXU|S_IRWXG|S_IRWXO);
@@ -92,7 +69,6 @@ int do_mkdir(int dirfd, const char *pathname, mode_t mode)
   ret = get_path_from_fd(dirfd, &relativepath);
   if (ret < 0)
     {
-      errcode = -ret;
       goto errout;
     }
 
@@ -104,145 +80,82 @@ int do_mkdir(int dirfd, const char *pathname, mode_t mode)
 
   if (ret < 0)
     {
-      errcode = -ret;
       goto errout;
     }
-
-  /* Find the inode that includes this path */
-  SETUP_SEARCH(&desc, fullpath, false);
-  ret = inode_find(&desc);
-  inode = desc.node;
-  relpath = desc.relpath;
-
-  if ((ret >= 0) && (inode != NULL))
+  if (!strncmp(fullpath, "/dev", 4) || !strncmp(fullpath, "/proc", 5))
     {
-      if (!strlen(relpath))
+      // virtual root create virtual dir
+      VnodeHold();
+      ret = VnodeLookup(fullpath, &vnode, V_DUMMY|V_CREATE);
+      if (ret != OK)
         {
-          /* Find the inode that exactly match this path. */
-
-          errcode = EEXIST;
-          goto errout_with_inode;
+          goto errout_with_lock;
         }
-
-      /* If the path doesn't include the existed rootfs dirs,
-       * then make a pseudo dir.
-       */
-
-#ifndef CONFIG_DISABLE_PSEUDOFS_OPERATIONS
-      if (((inode == g_root_inode) && !IsInRootfs(relpath))  || (!INODE_IS_MOUNTPT(g_root_inode)))
-        {
-          if (VfsPermissionCheck(desc.parent->i_uid, desc.parent->i_gid, desc.parent->i_mode, EXEC_OP | WRITE_OP))
-            {
-              errcode = EACCES;
-              goto errout_with_inode;
-            }
-          /* Create a pseudo inode. */
-          inode_semtake();
-
-          ret = inode_reserve(fullpath, &pathnode);
-          if (ret < 0)
-            {
-              errcode = -ret;
-              inode_semgive();
-              goto errout_with_inode;
-            }
-          pathnode->i_mode = mode;
-          pathnode->i_uid = c_uid;
-          pathnode->i_gid = c_gid;
-          inode_semgive();
-        }
-      else
-#endif
-
-      /* An inode was found that includes this path and possibly refers to a
-       * mountpoint.
-       */
-
-#ifndef CONFIG_DISABLE_MOUNTPOINT
-      /* Check if the inode is a valid mountpoint. */
-
-      if (!INODE_IS_MOUNTPT(inode) || !inode->u.i_mops)
-        {
-          /* The inode is not a mountpoint */
-
-          errcode = EEXIST;
-          goto errout_with_inode;
-        }
-
-      /* Perform the mkdir operation using the relative path
-       * at the mountpoint.
-       */
-
-      else if (inode->u.i_mops->mkdir)
-        {
-          ret = inode->u.i_mops->mkdir(inode, relpath, mode);
-          if (ret < 0)
-            {
-              errcode = -ret;
-              goto errout_with_inode;
-            }
-        }
-      else
-        {
-          errcode = ENOSYS;
-          goto errout_with_inode;
-        }
-
-      /* Release our reference on the inode */
-
-      inode_release(inode);
-#else
-      /* But mountpoints are not supported in this configuration */
-
-      errcode = EEXIST;
-      goto errout_with_inode;
-#endif
+      vnode->mode = mode | S_IFDIR;
+      vnode->type = VNODE_TYPE_DIR;
+      VnodeDrop();
+      goto out;
     }
 
-#ifndef CONFIG_DISABLE_PSEUDOFS_OPERATIONS
-  /* No inode exists that contains this path.  Create a new inode in the
-   * pseudo-filesystem at this location.
-   */
+  dirname = strrchr(fullpath, '/') + 1;
 
+  VnodeHold();
+  ret = VnodeLookup(fullpath, &parentVnode, 0);
+  if (ret == OK)
+    {
+      ret = -EEXIST;
+      goto errout_with_lock;
+    }
+
+  if (parentVnode == NULL)
+    {
+      ret = -ENOENT;
+      goto errout_with_lock;
+    }
+  parentVnode->useCount++;
+
+  if (VfsVnodePermissionCheck(parentVnode, WRITE_OP))
+    {
+      ret = -EACCES;
+      goto errout_with_count;
+    }
+
+  if ((parentVnode->vop != NULL) && (parentVnode->vop->Mkdir != NULL))
+    {
+      ret = parentVnode->vop->Mkdir(parentVnode, dirname, mode, &vnode);
+    }
   else
     {
-      /* Create an inode in the pseudo-filesystem at this path.
-       * NOTE that the new inode will be created with a reference
-       * count of zero.
-       */
-      inode_semtake();
-      ret = inode_reserve(fullpath, &inode);
-      if (ret < 0)
-        {
-          errcode = -ret;
-          free(fullpath);
-          inode_semgive();
-          goto errout;
-        }
-      inode->i_mode = mode;
-      inode->i_uid = c_uid;
-      inode->i_gid = c_gid;
-      inode_semgive();
+      ret = -ENOSYS;
     }
-#else
-  else
-    {
-      errcode = ENXIO;
-      free(fullpath);
-      goto errout;
-    }
-#endif
 
+  if (ret < 0)
+    {
+      goto errout_with_count;
+    }
+
+  struct PathCache *dt = PathCacheAlloc(parentVnode, vnode, dirname, strlen(dirname));
+  if (dt == NULL) {
+      // alloc name cache failed is not a critical problem, let it go.
+      PRINT_ERR("alloc path cache %s failed\n", dirname);
+  }
+  parentVnode->useCount--;
+  VnodeDrop();
+out:
   /* Directory successfully created */
-
   free(fullpath);
+
   return OK;
-
-errout_with_inode:
-  inode_release(inode);
-  free(fullpath);
+errout_with_count:
+  parentVnode->useCount--;
+errout_with_lock:
+  VnodeDrop();
 errout:
-  set_errno(errcode);
+  set_errno(-ret);
+  if (fullpath)
+    {
+      free(fullpath);
+    }
   return VFS_ERROR;
 }
 
@@ -273,5 +186,3 @@ int mkdirat(int dirfd, const char *pathname, mode_t mode)
 {
   return do_mkdir(dirfd, pathname, mode);
 }
-
-#endif /* FS_HAVE_MKDIR */

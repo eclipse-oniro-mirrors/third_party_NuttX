@@ -62,7 +62,7 @@
 
 struct bchlib_s
 {
-  struct inode *inode;           /* I-node of the block driver */
+  struct Vnode *vnode;           /* I-node of the block driver */
   uint32_t sectsize;             /* The size of one sector on the device */
   unsigned long long nsectors;   /* Number of sectors supported by the device */
   unsigned long long sector;     /* The current sector in the buffer */

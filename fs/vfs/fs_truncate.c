@@ -45,7 +45,7 @@
 #include "assert.h"
 #include "errno.h"
 
-#include "inode/inode.h"
+#include "fs/vnode.h"
 
 /****************************************************************************
  * Name: file_truncate
@@ -56,9 +56,9 @@
  *   the errno variable.
  *
  ****************************************************************************/
-static int file_truncate(FAR struct file *filep, off_t length)
+static int file_truncate(struct file *filep, off_t length)
 {
-  FAR struct inode *inode = NULL;
+  struct Vnode *vnode = NULL;
   int ret;
   int err;
 
@@ -70,13 +70,13 @@ static int file_truncate(FAR struct file *filep, off_t length)
       goto errout;
     }
 
-  /* Is this inode a registered mountpoint? Does it support the
+  /* Is this vnode a registered mountpoint? Does it support the
    * truncate operations may be relevant to device drivers but only
    * the mountpoint operations vtable contains a truncate method.
    */
 
-  inode = filep->f_inode;
-  if (!inode || !inode->u.i_mops || !inode->u.i_mops->truncate)
+  vnode = filep->f_vnode;
+  if (!vnode || !vnode->vop || !vnode->vop->Truncate)
     {
       err = EBADF;
       goto errout;
@@ -86,7 +86,7 @@ static int file_truncate(FAR struct file *filep, off_t length)
    * a write-able file system.
    */
 
-  ret = inode->u.i_mops->truncate(filep, length);
+  ret = vnode->vop->Truncate(vnode, length);
   if (ret < 0)
     {
       err = -ret;
@@ -136,7 +136,7 @@ errout:
 int ftruncate(int fd, off_t length)
 {
 #if CONFIG_NFILE_DESCRIPTORS > 0
-  FAR struct file *filep = NULL;
+  struct file *filep = NULL;
 #endif
 
   /* Did we get a valid file descriptor? */

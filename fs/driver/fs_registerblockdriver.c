@@ -38,14 +38,16 @@
  ****************************************************************************/
 
 #include "vfs_config.h"
-
 #include "sys/types.h"
 #include "errno.h"
-
 #include "fs/fs.h"
-
-#include "inode/inode.h"
+#include "fs/vnode.h"
 #include "string.h"
+#include "fs/vfs_util.h"
+#include "fs/path_cache.h"
+#include "fs/vnode.h"
+#include "limits.h"
+
 
 #ifndef CONFIG_DISABLE_MOUNTPOINT
 
@@ -57,62 +59,63 @@
  * Name: register_blockdriver
  *
  * Description:
- *   Register a block driver inode the pseudo file system.
+ *   Register a block driver vnode the pseudo file system.
  *
  * Input parameters:
- *   path - The path to the inode to create
+ *   path - The path to the vnode to create
  *   bops - The block driver operations structure
  *   mode - inmode priviledges (not used)
- *   priv - Private, user data that will be associated with the inode.
+ *   priv - Private, user data that will be associated with the vnode.
  *
  * Returned Value:
- *   Zero on success (with the inode point in 'inode'); A negated errno
+ *   Zero on success (with the vnode point in 'vnode'); A negated errno
  *   value is returned on a failure (all error values returned by
- *   inode_reserve):
+ *   vnode_reserve):
  *
  *   EINVAL - 'path' is invalid for this operation
- *   EEXIST - An inode already exists at 'path'
+ *   EEXIST - An vnode already exists at 'path'
  *   ENOMEM - Failed to allocate in-memory resources for the operation
  *
  ****************************************************************************/
 
-int register_blockdriver(FAR const char *path,
-                         FAR const struct block_operations *bops,
-                         mode_t mode, FAR void *priv)
+int register_blockdriver(const char *path,
+                         const struct block_operations *bops,
+                         mode_t mode, void *priv)
 {
-  FAR struct inode *node;
+  struct Vnode *vp = NULL;
   int ret;
 
   if (path == NULL || strlen(path) >= PATH_MAX || strncmp("/dev/", path, DEV_PATH_LEN) != 0)
     {
-      return EINVAL;
+      return -EINVAL;
     }
 
-  /* Insert an inode for the device driver -- we need to hold the inode
+  /* Insert an vnode for the device driver -- we need to hold the vnode
    * semaphore to prevent access to the tree while we this.  This is because
-   * we will have a momentarily bad true until we populate the inode with
+   * we will have a momentarily bad true until we populate the vnode with
    * valid data.
    */
 
-  inode_semtake();
-  ret = inode_reserve(path, &node);
+  struct drv_data *data = (struct drv_data *)zalloc(sizeof(struct drv_data));
+
+  data->ops = (void *)bops;
+  data->mode = mode;
+  data->priv = priv;
+
+  VnodeHold();
+  ret = VnodeLookup(path, &vp, V_CREATE | V_CACHE | V_DUMMY);
   if (ret >= 0)
     {
       /* We have it, now populate it with block driver specific information. */
 
-      INODE_SET_BLOCK(node);
-
-      node->u.i_bops  = bops;
-#ifdef LOSCFG_FILE_MODE
-      node->i_mode    = mode;
-#endif
-      node->i_private = priv;
-      ret             = OK;
+      vp->type = VNODE_TYPE_BLK;
+      vp->data = data;
+      vp->mode = mode;
+      ret = OK;
     }
 
-  inode_semgive();
+  VnodeDrop();
   return ret;
 }
 
 #endif /* !CONFIG_DISABLE_MOUNTPOINT */
-

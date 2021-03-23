@@ -177,9 +177,11 @@ struct tmpfs_file_s
 struct tmpfs_s
 {
   /* The root directory */
-
   FAR struct tmpfs_dirent_s tfs_root;
   struct tmpfs_sem_s tfs_exclsem;
+  mode_t           permission;
+  uint             gid;
+  uint             uid;
 };
 
 /* This is the type used the tmpfs_statfs_callout to accumulate memory usage */

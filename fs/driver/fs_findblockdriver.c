@@ -39,15 +39,12 @@
 
 #include "vfs_config.h"
 
+#include "driver/driver.h"
 #include "sys/types.h"
 #include "sys/mount.h"
 #include "debug.h"
 #include "errno.h"
-
 #include "fs/fs.h"
-
-#include "inode/inode.h"
-#include "driver/driver.h"
 #include "string.h"
 
 /****************************************************************************
@@ -75,7 +72,51 @@
  *             support write access
  *
  ****************************************************************************/
+int find_blockdriver(const char *pathname, int mountflags, struct Vnode **vpp)
+{
+  int ret;
+  struct Vnode *vp = NULL;
 
+  /* Sanity checks */
+
+  /* Find the vnode registered with this pathname */
+  VnodeHold();
+  ret = VnodeLookup(pathname, &vp, V_DUMMY);
+  if (ret < 0)
+    {
+      ret = -EACCES;
+      goto errout;
+    }
+
+  /* Verify that the vnode is a block driver. */
+  if (vp->type != VNODE_TYPE_BLK)
+    {
+      fdbg("%s is not a block driver\n", pathname);
+      ret = -ENOTBLK;
+      goto errout;
+    }
+
+  /* Make sure that the vnode supports the requested access */
+
+  struct block_operations *i_bops = (struct block_operations *)((struct drv_data *)vp->data)->ops;
+
+  if (i_bops == NULL || i_bops->read == NULL || (i_bops->write == NULL && (mountflags & MS_RDONLY) == 0))
+    {
+      fdbg("%s does not support requested access\n", pathname);
+      ret = -EACCES;
+      goto errout;
+    }
+
+  *vpp = vp;
+  VnodeDrop();
+  return OK;
+
+errout:
+  VnodeDrop();
+  return ret;
+}
+
+#ifdef VFS_IMPL_LATER
 int find_blockdriver(FAR const char *pathname, int mountflags,
                      FAR struct inode **ppinode)
 {
@@ -132,3 +173,4 @@ errout_with_inode:
 errout:
   return ret;
 }
+#endif

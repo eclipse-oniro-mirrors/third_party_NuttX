@@ -81,6 +81,7 @@ struct nfsnode
   uint8_t            n_fhsize;      /* Size in bytes of the file handle */
   uint8_t            n_flags;       /* Node flags */
   uint16_t           n_mode;        /* File mode for fstat() */
+  time_t             n_atime;       /* File access time */
   time_t             n_mtime;       /* File modification time */
   time_t             n_ctime;       /* File creation time */
   nfsfh_t            n_fhandle;     /* NFS File Handle */
@@ -88,6 +89,7 @@ struct nfsnode
   int                n_oflags;      /* Flags provided when file was opened */
   loff_t             n_fpos;        /* NFS File position */
   struct file       *n_filep;       /* File pointer from VFS */
+  char              *n_name;
 };
 
 #ifdef __cplusplus

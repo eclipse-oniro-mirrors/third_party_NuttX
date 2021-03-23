@@ -134,16 +134,16 @@ static struct rpcstats rpcstats;
  * Private Function Prototypes
  ****************************************************************************/
 
-static int rpcclnt_send(FAR struct rpcclnt *rpc, int procid, int prog,
-                        FAR void *call, int reqlen);
-static int rpcclnt_receive(FAR struct rpcclnt *rpc, struct sockaddr *aname,
+static int rpcclnt_send(struct rpcclnt *rpc, int procid, int prog,
+                        void *call, int reqlen);
+static int rpcclnt_receive(struct rpcclnt *rpc, struct sockaddr *aname,
                            int proc, int program, void *reply, size_t resplen);
-static int rpcclnt_reply(FAR struct rpcclnt *rpc, int procid, int prog,
+static int rpcclnt_reply(struct rpcclnt *rpc, int procid, int prog,
                          void *reply, size_t resplen);
 static uint32_t rpcclnt_newxid(void);
-static void rpcclnt_fmtheader(FAR struct rpc_call_header *ch,
+static void rpcclnt_fmtheader(struct rpc_call_header *ch,
                               uint32_t xid, int procid, int prog, int vers, size_t reqlen);
-static int rpcclnt_reconnect(FAR struct rpcclnt *rpc, struct sockaddr *saddr);
+static int rpcclnt_reconnect(struct rpcclnt *rpc, struct sockaddr *saddr);
 
 /****************************************************************************
  * Private Functions
@@ -160,8 +160,8 @@ static int rpcclnt_reconnect(FAR struct rpcclnt *rpc, struct sockaddr *saddr);
  *
  ****************************************************************************/
 
-static int rpcclnt_send(FAR struct rpcclnt *rpc, int procid, int prog,
-                        FAR void *call, int reqlen)
+static int rpcclnt_send(struct rpcclnt *rpc, int procid, int prog,
+                        void *call, int reqlen)
 {
   ssize_t nbytes;
   int ret = OK;
@@ -196,8 +196,8 @@ static int rpcclnt_send(FAR struct rpcclnt *rpc, int procid, int prog,
  *
  ****************************************************************************/
 
-static int rpcclnt_receive(FAR struct rpcclnt *rpc, FAR struct sockaddr *aname,
-                           int proc, int program, FAR void *reply,
+static int rpcclnt_receive(struct rpcclnt *rpc, struct sockaddr *aname,
+                           int proc, int program, void *reply,
                            size_t resplen)
 {
   ssize_t nbytes;
@@ -261,8 +261,8 @@ retry:
  *
  ****************************************************************************/
 
-static int rpcclnt_receive(FAR struct rpcclnt *rpc, FAR struct sockaddr *aname,
-                           int proc, int program, FAR void *reply,
+static int rpcclnt_receive(struct rpcclnt *rpc, struct sockaddr *aname,
+                           int proc, int program, void *reply,
                            size_t resplen)
 {
   ssize_t   nbytes;
@@ -350,8 +350,8 @@ static int rpcclnt_receive(FAR struct rpcclnt *rpc, FAR struct sockaddr *aname,
  *
  ****************************************************************************/
 
-static int rpcclnt_reply(FAR struct rpcclnt *rpc, int procid, int prog,
-                         FAR void *reply, size_t resplen)
+static int rpcclnt_reply(struct rpcclnt *rpc, int procid, int prog,
+                         void *reply, size_t resplen)
 {
   int error;
 
@@ -378,8 +378,8 @@ static int rpcclnt_reply(FAR struct rpcclnt *rpc, int procid, int prog,
 
   else
     {
-      FAR struct rpc_reply_header *replyheader =
-        (FAR struct rpc_reply_header *)reply;
+      struct rpc_reply_header *replyheader =
+        (struct rpc_reply_header *)reply;
 
       if (replyheader->rp_direction != rpc_reply)
         {
@@ -501,7 +501,7 @@ static int rpcclnt_alivecheck(struct rpcclnt *rpc)
  *
  ****************************************************************************/
 
-static void rpcclnt_fmtheader(FAR struct rpc_call_header *ch,
+static void rpcclnt_fmtheader(struct rpc_call_header *ch,
                               uint32_t xid, int prog, int vers, int procid, size_t reqlen)
 {
   unsigned int high = 0;
@@ -545,7 +545,7 @@ static void rpcclnt_fmtheader(FAR struct rpc_call_header *ch,
   ch->rpc_verf.authlen   = 0;
 }
 
-static int rpcclnt_reconnect(FAR struct rpcclnt *rpc, struct sockaddr *saddr)
+static int rpcclnt_reconnect(struct rpcclnt *rpc, struct sockaddr *saddr)
 {
   int errval;
   int error;
@@ -732,15 +732,15 @@ int rpcclnt_connect(struct rpcclnt *rpc)
   request.sdata.pmap.port = 0;
 
   error = rpcclnt_request(rpc, PMAPPROC_GETPORT, PMAPPROG, PMAPVERS,
-                          (FAR void *)&request.sdata, sizeof(struct call_args_pmap),
-                          (FAR void *)&response.rdata, sizeof(struct rpc_reply_pmap));
+                          (void *)&request.sdata, sizeof(struct call_args_pmap),
+                          (void *)&response.rdata, sizeof(struct rpc_reply_pmap));
   if (error != 0)
     {
       ferr("ERROR: rpcclnt_request failed: %d\n", error);
       goto bad;
     }
 
-  sa = (FAR struct sockaddr_in *)saddr;
+  sa = (struct sockaddr_in *)saddr;
   sa->sin_port = htons(fxdr_unsigned(uint32_t, response.rdata.pmap.port));
 
   error = rpcclnt_reconnect(rpc, saddr);
@@ -768,9 +768,9 @@ int rpcclnt_connect(struct rpcclnt *rpc)
   request.mountd.mount.len =  txdr_unsigned(sizeof(request.mountd.mount.rpath));
 
   error = rpcclnt_request(rpc, RPCMNT_MOUNT, RPCPROG_MNT, RPCMNT_VER3,
-                          (FAR void *)&request.mountd,
+                          (void *)&request.mountd,
                           sizeof(struct call_args_mount),
-                          (FAR void *)&response.mdata,
+                          (void *)&response.mdata,
                           sizeof(struct rpc_reply_mount));
   if (error != 0)
     {
@@ -807,9 +807,9 @@ int rpcclnt_connect(struct rpcclnt *rpc)
   request.sdata.pmap.port = 0;
 
   error = rpcclnt_request(rpc, PMAPPROC_GETPORT, PMAPPROG, PMAPVERS,
-                          (FAR void *)&request.sdata,
+                          (void *)&request.sdata,
                           sizeof(struct call_args_pmap),
-                          (FAR void *)&response.rdata,
+                          (void *)&response.rdata,
                           sizeof(struct rpc_reply_pmap));
   if (error != 0)
     {
@@ -878,7 +878,7 @@ int rpcclnt_umount(struct rpcclnt *rpc)
   int error;
 
   saddr = rpc->rc_name;
-  sa = (FAR struct sockaddr_in *)saddr;
+  sa = (struct sockaddr_in *)saddr;
 
   /* Do the RPC to get a dynamic bounding with the server using ppmap.
    * Get port number for MOUNTD.
@@ -899,9 +899,9 @@ int rpcclnt_umount(struct rpcclnt *rpc)
   request.sdata.pmap.port = 0;
 
   error = rpcclnt_request(rpc, PMAPPROC_GETPORT, PMAPPROG, PMAPVERS,
-                          (FAR void *)&request.sdata,
+                          (void *)&request.sdata,
                           sizeof(struct call_args_pmap),
-                          (FAR void *)&response.rdata,
+                          (void *)&response.rdata,
                           sizeof(struct rpc_reply_pmap));
   if (error != 0)
     {
@@ -926,9 +926,9 @@ int rpcclnt_umount(struct rpcclnt *rpc)
   request.mountd.umount.len =  txdr_unsigned(sizeof(request.mountd.umount.rpath));
 
   error = rpcclnt_request(rpc, RPCMNT_UMOUNT, RPCPROG_MNT, RPCMNT_VER3,
-                          (FAR void *)&request.mountd,
+                          (void *)&request.mountd,
                           sizeof(struct call_args_umount),
-                          (FAR void *)&response.mdata,
+                          (void *)&response.mdata,
                           sizeof(struct rpc_reply_umount));
   if (error != 0)
     {
@@ -960,9 +960,9 @@ bad:
  *
  ****************************************************************************/
 
-int rpcclnt_request(FAR struct rpcclnt *rpc, int procnum, int prog,
-                    int version, FAR void *request, size_t reqlen,
-                    FAR void *response, size_t resplen)
+int rpcclnt_request(struct rpcclnt *rpc, int procnum, int prog,
+                    int version, void *request, size_t reqlen,
+                    void *response, size_t resplen)
 {
   struct rpc_reply_header *replymsg;
   uint32_t tmp;
@@ -983,7 +983,7 @@ int rpcclnt_request(FAR struct rpcclnt *rpc, int procnum, int prog,
 
   /* Initialize the RPC header fields */
 
-  rpcclnt_fmtheader((FAR struct rpc_call_header *)request,
+  rpcclnt_fmtheader((struct rpc_call_header *)request,
                     rpc->xid, prog, version, procnum, reqlen);
 
   /* Send the RPC call messsages and receive the RPC response. For UDP-RPC, A limited
@@ -1081,7 +1081,7 @@ int rpcclnt_request(FAR struct rpcclnt *rpc, int procnum, int prog,
 
   /* Break down the RPC header and check if it is OK */
 
-  replymsg = (FAR struct rpc_reply_header *)response;
+  replymsg = (struct rpc_reply_header *)response;
 
   tmp = fxdr_unsigned(uint32_t, replymsg->type);
   if (tmp == RPC_MSGDENIED)

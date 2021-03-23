@@ -38,14 +38,14 @@
  ****************************************************************************/
 
 #include "vfs_config.h"
-
 #include "sys/types.h"
 #include "errno.h"
-
 #include "fs/fs.h"
-
-#include "inode/inode.h"
+#include "fs/vnode.h"
 #include "string.h"
+#include "fs/vfs_util.h"
+#include "fs/path_cache.h"
+#include "limits.h"
 
 /****************************************************************************
  * Public Functions
@@ -55,29 +55,29 @@
  * Name: register_driver
  *
  * Description:
- *   Register a character driver inode the pseudo file system.
+ *   Register a character driver vnode the pseudo file system.
  *
  * Input Parameters:
- *   path - The path to the inode to create
+ *   path - The path to the vnode to create
  *   fops - The file operations structure
  *   mode - inmode priviledges (not used)
- *   priv - Private, user data that will be associated with the inode.
+ *   priv - Private, user data that will be associated with the vnode.
  *
  * Returned Value:
- *   Zero on success (with the inode point in 'inode'); A negated errno
+ *   Zero on success (with the vnode point in 'vnode'); A negated errno
  *   value is returned on a failure (all error values returned by
- *   inode_reserve):
+ *   vnode_reserve):
  *
  *   EINVAL - 'path' is invalid for this operation
- *   EEXIST - An inode already exists at 'path'
+ *   EEXIST - An vnode already exists at 'path'
  *   ENOMEM - Failed to allocate in-memory resources for the operation
  *
  ****************************************************************************/
 
-int register_driver(FAR const char *path, FAR const struct file_operations_vfs *fops,
-                    mode_t mode, FAR void *priv)
+int register_driver(const char *path, const struct file_operations_vfs *fops,
+                    mode_t mode, void *priv)
 {
-  FAR struct inode *node;
+  struct Vnode *vnode = NULL;
   int ret;
 
   if (path == NULL || strlen(path) >= PATH_MAX || strncmp("/dev/", path, DEV_PATH_LEN) != 0)
@@ -85,28 +85,38 @@ int register_driver(FAR const char *path, FAR const struct file_operations_vfs *
       return -EINVAL;
     }
 
-  /* Insert a dummy node -- we need to hold the inode semaphore because we
+  VnodeHold();
+  ret = VnodeLookup(path, &vnode, 0);
+  if (ret == 0)
+    {
+      VnodeDrop();
+      return -EEXIST;
+    }
+
+  /* Insert a dummy node -- we need to hold the vnode semaphore because we
    * will have a momentarily bad structure.
    */
 
-  inode_semtake();
-  ret = inode_reserve(path, &node);
-  if (ret >= 0)
+  struct drv_data *data = (struct drv_data *)zalloc(sizeof(struct drv_data));
+
+  data->ops = (void *)fops;
+  data->mode = mode;
+  data->priv = priv;
+
+  ret = VnodeLookup(path, &vnode, V_CREATE | V_CACHE | V_DUMMY);
+  if (ret == OK)
     {
       /* We have it, now populate it with driver specific information.
-       * NOTE that the initial reference count on the new inode is zero.
+       * NOTE that the initial reference count on the new vnode is zero.
        */
-
-      INODE_SET_DRIVER(node);
-
-      node->u.i_ops   = fops;
-#ifdef LOSCFG_FILE_MODE
-      node->i_mode    = mode & (S_IRWXU|S_IRWXG|S_IRWXO);
-#endif
-      node->i_private = priv;
-      ret             = OK;
+      vnode->type = VNODE_TYPE_CHR;
+      vnode->data = data;
+      vnode->mode = mode;
+      vnode->fop = (struct file_operations_vfs *)fops;
+      ret = OK;
     }
 
-  inode_semgive();
+  VnodeDrop();
+
   return ret;
 }

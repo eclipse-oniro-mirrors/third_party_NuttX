@@ -49,7 +49,7 @@
 # include "net/net.h"
 #endif
 
-#include "inode/inode.h"
+#include "fs/vnode.h"
 
 /****************************************************************************
  * Public Functions
@@ -94,8 +94,7 @@ int ioctl(int fd, int req, ...)
   UINTPTR arg = 0;
   va_list ap;
 #if CONFIG_NFILE_DESCRIPTORS > 0
-  FAR struct file     *filep;
-  FAR struct inode    *inode;
+  struct file     *filep;
   int                  ret = OK;
 #endif
 
@@ -149,12 +148,11 @@ int ioctl(int fd, int req, ...)
 
   /* Is a driver registered? Does it support the ioctl method? */
 
-  inode = filep->f_inode;
-  if (inode && inode->u.i_ops && inode->u.i_ops->ioctl)
+  if (filep->ops && filep->ops->ioctl)
     {
       /* Yes, then let it perform the ioctl */
 
-      ret = (int)inode->u.i_ops->ioctl(filep, req, arg);
+      ret = (int) filep->ops->ioctl(filep, req, arg);
       if (ret < 0)
         {
           err = -ret;
@@ -163,7 +161,7 @@ int ioctl(int fd, int req, ...)
     }
   else
     {
-      err = EBADF;
+      err = ENOSYS;
       ret = VFS_ERROR;
       goto errout;
     }
@@ -173,5 +171,5 @@ int ioctl(int fd, int req, ...)
 
 errout:
   set_errno(err);
-  return ret;
+  return VFS_ERROR;
 }

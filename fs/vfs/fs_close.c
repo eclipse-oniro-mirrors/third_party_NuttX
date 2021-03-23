@@ -48,7 +48,6 @@
 # include "net/net.h"
 #endif
 
-#include "inode/inode.h"
 #include "mqueue.h"
 
 /****************************************************************************

@@ -51,7 +51,7 @@
  * Private Data
  ****************************************************************************/
 
-static ssize_t fifo_map(FAR struct file* filep, FAR LosVmMapRegion *region)
+static ssize_t fifo_map(struct file* filep, LosVmMapRegion *region)
 {
   PRINTK("%s %d, mmap is not support\n", __FUNCTION__, __LINE__);
   return 0;
@@ -59,16 +59,16 @@ static ssize_t fifo_map(FAR struct file* filep, FAR LosVmMapRegion *region)
 
 static const struct file_operations_vfs fifo_fops =
 {
-  pipecommon_open,   /* open */
-  pipecommon_close,  /* close */
-  pipecommon_read,   /* read */
-  pipecommon_write,  /* write */
-  NULL,              /* seek */
-  NULL,  /* ioctl */
-  fifo_map,          /* mmap */
-  NULL,              /* poll */
+  .open = pipecommon_open,      /* open */
+  .close = pipecommon_close,    /* close */
+  .read = pipecommon_read,      /* read */
+  .write = pipecommon_write,    /* write */
+  .seek = NULL,                 /* seek */
+  .ioctl = NULL,                /* ioctl */
+  .mmap = fifo_map,             /* mmap */
+  .poll = NULL,                 /* poll */
 #ifndef CONFIG_DISABLE_PSEUDOFS_OPERATIONS
-  pipecommon_unlink, /* unlink */
+  .unlink = pipecommon_unlink,  /* unlink */
 #endif
 };
 
@@ -110,9 +110,9 @@ static const struct file_operations_vfs fifo_fops =
  *
  ****************************************************************************/
 
-int mkfifo(FAR const char *pathname, mode_t mode)
+int mkfifo(const char *pathname, mode_t mode)
 {
-  FAR struct pipe_dev_s *dev;
+  struct pipe_dev_s *dev = NULL;
   int ret;
   size_t bufsize = 1024;
 
@@ -139,7 +139,7 @@ int mkfifo(FAR const char *pathname, mode_t mode)
       return -ENOMEM;
     }
 
-  ret = register_driver(pathname, &fifo_fops, mode, (FAR void *)dev);
+  ret = register_driver(pathname, &fifo_fops, mode, (void *)dev);
   if (ret != 0)
     {
       pipecommon_freedev(dev);

@@ -68,7 +68,7 @@ static ssize_t bch_write(struct file *filep, const char *buffer,
 static int     bch_ioctl(struct file *filep, int cmd,
                  unsigned long arg);
 #ifndef CONFIG_DISABLE_PSEUDOFS_OPERATIONS
-static int     bch_unlink(struct inode *inode);
+static int     bch_unlink(struct Vnode *vnode);
 #endif
 
 /****************************************************************************
@@ -77,17 +77,13 @@ static int     bch_unlink(struct inode *inode);
 
 const struct file_operations_vfs bch_fops =
 {
-  bch_open,    /* open */
-  bch_close,   /* close */
-  bch_read,    /* read */
-  bch_write,   /* write */
-  bch_seek,    /* seek */
-  bch_ioctl,   /* ioctl */
-  NULL,        /* mmap */
-#ifndef CONFIG_DISABLE_POLL
-  NULL,        /* poll */
-#endif
-  bch_unlink,  /* unlink */
+  .open = bch_open,    /* open */
+  .close = bch_close,   /* close */
+  .read = bch_read,    /* read */
+  .write = bch_write,   /* write */
+  .seek = bch_seek,    /* seek */
+  .ioctl = bch_ioctl,   /* ioctl */
+  .unlink = bch_unlink,  /* unlink */
 };
 
 /****************************************************************************
@@ -101,14 +97,13 @@ const struct file_operations_vfs bch_fops =
  *
  ****************************************************************************/
 
-static int bch_open(FAR struct file *filep)
+static int bch_open(struct file *filep)
 {
-  FAR struct inode *inode = filep->f_inode;
-  FAR struct bchlib_s *bch;
+  struct Vnode *vnode = filep->f_vnode;
+  struct bchlib_s *bch;
   int ret = OK;
 
-  DEBUGASSERT(inode && inode->i_private);
-  bch = (FAR struct bchlib_s *)inode->i_private;
+  bch = (struct bchlib_s *)((struct drv_data *)vnode->data)->priv;
 
   /* Increment the reference count */
 
@@ -133,14 +128,13 @@ static int bch_open(FAR struct file *filep)
  *
  ****************************************************************************/
 
-static int bch_close(FAR struct file *filep)
+static int bch_close(struct file *filep)
 {
-  FAR struct inode *inode = filep->f_inode;
-  FAR struct bchlib_s *bch;
+  struct Vnode *vnode = filep->f_vnode;
+  struct bchlib_s *bch;
   int ret = OK;
 
-  DEBUGASSERT(inode && inode->i_private);
-  bch = (FAR struct bchlib_s *)inode->i_private;
+  bch = (struct bchlib_s *)((struct drv_data *)vnode->data)->priv;
 
   /* Flush any dirty pages remaining in the cache */
 
@@ -168,7 +162,7 @@ static int bch_close(FAR struct file *filep)
         {
            /* Tear the driver down now. */
 
-           ret = bchlib_teardown((FAR void *)bch);
+           ret = bchlib_teardown((void *)bch);
 
            /* bchlib_teardown() would only fail if there are outstanding
             * references on the device.  Since we know that is not true, it
@@ -193,16 +187,14 @@ static int bch_close(FAR struct file *filep)
  * Name: bch_seek
  ****************************************************************************/
 
-static off_t bch_seek(FAR struct file *filep, off_t offset, int whence)
+static off_t bch_seek(struct file *filep, off_t offset, int whence)
 {
-  FAR struct inode *inode = filep->f_inode;
-  FAR struct bchlib_s *bch;
+  struct Vnode *vnode = filep->f_vnode;
+  struct bchlib_s *bch;
   loff_t newpos;
   int ret;
 
-  DEBUGASSERT(inode && inode->i_private);
-
-  bch = (FAR struct bchlib_s *)inode->i_private;
+  bch = (struct bchlib_s *)((struct drv_data *)vnode->data)->priv;
   bchlib_semtake(bch);
 
   /* Determine the new, requested file position */
@@ -259,14 +251,13 @@ static off_t bch_seek(FAR struct file *filep, off_t offset, int whence)
  * Name: bch_read
  ****************************************************************************/
 
-static ssize_t bch_read(FAR struct file *filep, FAR char *buffer, size_t len)
+static ssize_t bch_read(struct file *filep, char *buffer, size_t len)
 {
-  FAR struct inode *inode = filep->f_inode;
-  FAR struct bchlib_s *bch;
+  struct Vnode *vnode = filep->f_vnode;
+  struct bchlib_s *bch;
   int ret;
 
-  DEBUGASSERT(inode && inode->i_private);
-  bch = (FAR struct bchlib_s *)inode->i_private;
+  bch = (struct bchlib_s *)((struct drv_data *)vnode->data)->priv;
 
   bchlib_semtake(bch);
   ret = bchlib_read(bch, buffer, filep->f_pos, len);
@@ -283,14 +274,13 @@ static ssize_t bch_read(FAR struct file *filep, FAR char *buffer, size_t len)
  * Name: bch_write
  ****************************************************************************/
 
-static ssize_t bch_write(FAR struct file *filep, FAR const char *buffer, size_t len)
+static ssize_t bch_write(struct file *filep, const char *buffer, size_t len)
 {
-  FAR struct inode *inode = filep->f_inode;
-  FAR struct bchlib_s *bch;
+  struct Vnode *vnode = filep->f_vnode;
+  struct bchlib_s *bch;
   int ret = -EACCES;
 
-  DEBUGASSERT(inode && inode->i_private);
-  bch = (FAR struct bchlib_s *)inode->i_private;
+  bch = (struct bchlib_s *)((struct drv_data *)vnode->data)->priv;
 
   if (!bch->readonly)
     {
@@ -315,14 +305,14 @@ static ssize_t bch_write(FAR struct file *filep, FAR const char *buffer, size_t 
  *
  ****************************************************************************/
 
-static int bch_ioctl(FAR struct file *filep, int cmd, unsigned long arg)
+static int bch_ioctl(struct file *filep, int cmd, unsigned long arg)
 {
-  FAR struct inode *inode = filep->f_inode;
-  FAR struct bchlib_s *bch;
+  struct Vnode *vnode = filep->f_vnode;
+  struct bchlib_s *bch;
+  struct block_operations *bop = NULL;
   int ret = -ENOTTY;
 
-  DEBUGASSERT(inode && inode->i_private);
-  bch = (FAR struct bchlib_s *)inode->i_private;
+  bch = (struct bchlib_s *)((struct drv_data *)vnode->data)->priv;
 
   /* Process the call according to the command */
 
@@ -332,8 +322,8 @@ static int bch_ioctl(FAR struct file *filep, int cmd, unsigned long arg)
 
       case DIOC_GETPRIV:
         {
-          FAR struct bchlib_s **bchr =
-            (FAR struct bchlib_s **)((uintptr_t)arg);
+          struct bchlib_s **bchr =
+            (struct bchlib_s **)((uintptr_t)arg);
 
           bchlib_semtake(bch);
           if (!bchr || bch->refs == MAX_OPENCNT)
@@ -362,8 +352,6 @@ static int bch_ioctl(FAR struct file *filep, int cmd, unsigned long arg)
 
     default:
       {
-        struct inode *bchinode = bch->inode;
-
         /* Does the block driver support the ioctl method? */
 
         los_disk *disk = bch->disk;
@@ -380,9 +368,10 @@ static int bch_ioctl(FAR struct file *filep, int cmd, unsigned long arg)
           }
         if (disk->disk_status == STAT_INUSED)
           {
-            if (bchinode->u.i_bops->ioctl != NULL)
+            bop = (struct block_operations *)(((struct drv_data *)vnode->data)->ops);
+            if (bop != NULL && bop->ioctl != NULL)
               {
-                ret = bchinode->u.i_bops->ioctl(bchinode, cmd, arg);
+                ret = bop->ioctl(bch->vnode, cmd, arg);
               }
           }
 
@@ -405,13 +394,12 @@ static int bch_ioctl(FAR struct file *filep, int cmd, unsigned long arg)
  *
  ****************************************************************************/
 
-static int bch_unlink(FAR struct inode *inode)
+int bch_unlink(struct Vnode *vnode)
 {
-  FAR struct bchlib_s *bch;
+  struct bchlib_s *bch;
   int ret = OK;
 
-  DEBUGASSERT(inode && inode->i_private);
-  bch = (FAR struct bchlib_s *)inode->i_private;
+  bch = (struct bchlib_s *)((struct drv_data *)vnode->data)->priv;
 
   /* Get exclusive access to the BCH device */
 
@@ -429,7 +417,7 @@ static int bch_unlink(FAR struct inode *inode)
     {
       /* Tear the driver down now. */
 
-      ret = bchlib_teardown((FAR void *)bch);
+      ret = bchlib_teardown((void *)bch);
 
       /* bchlib_teardown() would only fail if there are outstanding
        * references on the device.  Since we know that is not true, it

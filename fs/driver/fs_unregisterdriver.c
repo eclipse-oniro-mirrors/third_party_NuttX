@@ -41,7 +41,7 @@
 
 #include "fs/fs.h"
 
-#include "inode/inode.h"
+#include "fs/vnode.h"
 #include "string.h"
 #include "errno.h"
 
@@ -53,21 +53,12 @@
  * Name: unregister_driver
  *
  * Description:
- *   Remove the character driver inode at 'path' from the pseudo-file system
+ *   Remove the character driver vnode at 'path' from the pseudo-file system
  *
  ****************************************************************************/
 
-int unregister_driver(FAR const char *path)
+int unregister_driver(const char *path)
 {
-  int ret;
-
-  if (path == NULL || strlen(path) >= PATH_MAX || strncmp("/dev/", path, DEV_PATH_LEN) != 0)
-    {
-      return -EINVAL;
-    }
-
-  inode_semtake();
-  ret = inode_remove(path);
-  inode_semgive();
-  return ret;
+  (void)path;
+  return 0;
 }

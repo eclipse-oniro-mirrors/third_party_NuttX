@@ -1162,7 +1162,7 @@ int tmpfs_create(struct Vnode *dvp, const char *path, int mode, struct Vnode **v
     vp->data = tfo;
     vp->originMount = dvp->originMount;
     vp->type = VNODE_TYPE_REG;
-	tfo->mode = mode;
+    tfo->mode = mode;
     vp->mode = tfo->mode;
     vp->gid = tfo->gid;
     vp->uid = tfo->uid;

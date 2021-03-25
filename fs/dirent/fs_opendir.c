@@ -186,14 +186,12 @@ int do_opendir(const char *path, int oflags)
   ret = VnodeLookup(path, &vp, 0);
   if (ret < 0)
     {
-      PRINT_ERR("Failed to find vnode %s\n", path);
       VnodeDrop();
       goto errout;
     }
   if (vp->type != VNODE_TYPE_DIR)
     {
       ret = -ENOTDIR;
-      PRINT_ERR("opendir (%s) failed, err=%d\n", path, ret);
       VnodeDrop();
       goto errout;
     }

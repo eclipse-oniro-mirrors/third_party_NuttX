@@ -99,8 +99,8 @@ static int oflag_convert_mode(int oflags)
 
 int get_path_from_fd(int fd, char **path)
 {
-  struct file *file     = NULL;
-  char            *copypath = NULL;
+  struct file *file = NULL;
+  char *copypath = NULL;
 
   if (fd == AT_FDCWD)
     {
@@ -124,23 +124,8 @@ int get_path_from_fd(int fd, char **path)
       return VFS_ERROR;
     }
 
-  char *endptr = copypath + strlen(copypath)-1;//the ptr before '\0'
-
-  /* strip out the file name, for example:/usr/lib/xx.so, final get /usr/lib/ */
-  while (endptr > copypath)
-    {
-      if(*endptr == '/' && endptr > copypath)
-        {
-          *(endptr + 1) = '\0';
-          *path = copypath;
-          return OK;
-        }
-
-      endptr--;
-    }
-
-  free(copypath);
-  return -ENOENT;
+  *path = copypath;
+  return OK;
 }
 
 static int do_creat(struct Vnode **node, char *fullpath, mode_t mode)

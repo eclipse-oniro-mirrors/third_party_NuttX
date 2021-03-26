@@ -115,6 +115,10 @@ struct tmpfs_object_s
   time_t   to_ctime;     /* last changed status time */
   time_t   to_mtime;     /* last modified time */
   time_t   to_atime;     /* last access time */
+
+  mode_t   mode;
+  uint     gid;
+  uint     uid;
 };
 
 /* The form of a directory memory object */
@@ -131,6 +135,10 @@ struct tmpfs_directory_s
   time_t   tdo_ctime;    /* last changed status time */
   time_t   tdo_mtime;    /* last modified time */
   time_t   tdo_atime;    /* last access time */
+
+  mode_t   mode;
+  uint     gid;
+  uint     uid;
 
   /* Remaining fields are unique to a directory object */
 
@@ -163,6 +171,10 @@ struct tmpfs_file_s
   time_t   tfo_mtime;    /* last modified time */
   time_t   tfo_atime;    /* last access time */
 
+  mode_t   mode;
+  uint     gid;
+  uint     uid;
+
   /* Remaining fields are unique to a directory object */
 
   uint8_t  tfo_flags;    /* See TFO_FLAG_* definitions */
@@ -179,9 +191,6 @@ struct tmpfs_s
   /* The root directory */
   FAR struct tmpfs_dirent_s tfs_root;
   struct tmpfs_sem_s tfs_exclsem;
-  mode_t           permission;
-  uint             gid;
-  uint             uid;
 };
 
 /* This is the type used the tmpfs_statfs_callout to accumulate memory usage */

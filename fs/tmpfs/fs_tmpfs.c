@@ -188,30 +188,6 @@ struct file_operations_vfs tmpfs_fops = {
 static struct tmpfs_s tmpfs_superblock = {0};
 
 /****************************************************************************
- * Private Functions
- ****************************************************************************/
-
-static mode_t type_to_mode(int type, mode_t permission)
-{
-    switch (type) {
-    case VNODE_TYPE_DIR:
-        return permission | S_IFDIR;
-    case VNODE_TYPE_REG:
-        return permission | S_IFREG;
-    case VNODE_TYPE_BLK:
-        return permission | S_IFBLK;
-    case VNODE_TYPE_CHR:
-        return permission | S_IFCHR;
-    case VNODE_TYPE_FIFO:
-        return permission | S_IFIFO;
-    default:
-        break;
-    }
-    PRINTK("mode to type failed, unknwon type = %d\n", type);
-    return permission;
-}
-
-/****************************************************************************
  * Name: tmpfs_timestamp
  ****************************************************************************/
 
@@ -1186,9 +1162,10 @@ int tmpfs_create(struct Vnode *dvp, const char *path, int mode, struct Vnode **v
     vp->data = tfo;
     vp->originMount = dvp->originMount;
     vp->type = VNODE_TYPE_REG;
-    vp->mode = type_to_mode(vp->type, fs->permission);
-    vp->gid = fs->gid;
-    vp->uid = fs->uid;
+    tfo->mode = mode;
+    vp->mode = tfo->mode;
+    vp->gid = tfo->gid;
+    vp->uid = tfo->uid;
 
     ret = VfsHashInsert(vp, (uint32_t)tfo);
 
@@ -1688,16 +1665,16 @@ int tmpfs_mount(struct Mount *mnt, struct Vnode *device, const void *data)
       goto ERROR_WITH_FSWIN;
     }
 
-  fs->permission = mnt->vnodeBeCovered->mode & 0777;
-  fs->gid = mnt->vnodeBeCovered->gid;
-  fs->uid = mnt->vnodeBeCovered->uid;
+  tdo->mode = mnt->vnodeBeCovered->mode;
+  tdo->gid = mnt->vnodeBeCovered->gid;
+  tdo->uid = mnt->vnodeBeCovered->uid;
   vp->originMount = mnt;
   vp->fop = &tmpfs_fops;
   vp->type = VNODE_TYPE_DIR;
   vp->data = NULL;
-  vp->mode = type_to_mode(vp->type, fs->permission);
-  vp->gid = fs->gid;
-  vp->uid = fs->uid;
+  vp->mode = tdo->mode;
+  vp->gid = tdo->gid;
+  vp->uid = tdo->uid;
   mnt->data = fs;
   mnt->vnodeCovered = vp;
 
@@ -1794,7 +1771,6 @@ int tmpfs_lookup(struct Vnode *parent, const char *relPath, int len, struct Vnod
     }
   else
     {
-      PRINTK("tmpfs_lookup parent_tdo->tdo_type = %d\n", parent_tdo->tdo_type);
       if (parent_tdo->tdo_type != TMPFS_DIRECTORY)
         {
           ret = -ENOENT;
@@ -1816,13 +1792,7 @@ int tmpfs_lookup(struct Vnode *parent, const char *relPath, int len, struct Vnod
       goto errout_with_lock;
     }
 
-  ret = VfsHashGet(parent->originMount, (uint32_t)to, &vp, NULL, NULL);
-  if (ret != 0)
-    {
-      ret = -ENOENT;
-      goto errout_with_objects;
-    }
-
+  (void)VfsHashGet(parent->originMount, (uint32_t)to, &vp, NULL, NULL);
   if (vp == NULL)
     {
       ret = VnodeAlloc(&tmpfs_vops, &vp);
@@ -1838,9 +1808,9 @@ int tmpfs_lookup(struct Vnode *parent, const char *relPath, int len, struct Vnod
       vp->data = to;
       vp->originMount = parent->originMount;
       vp->type = to->to_type == TMPFS_REGULAR ? VNODE_TYPE_REG : VNODE_TYPE_DIR;
-      vp->mode = type_to_mode(vp->type, fs->permission);
-      vp->gid = fs->gid;
-      vp->uid = fs->uid;
+      vp->mode = to->mode;
+      vp->gid = to->gid;
+      vp->uid = to->uid;
 
       ret = VfsHashInsert(vp, (uint32_t)to);
     }
@@ -2048,15 +2018,16 @@ int tmpfs_mkdir(struct Vnode *parent, const char *relpath, mode_t mode, struct V
       goto errout_with_lock;
     }
 
+  tdo->mode = mode;
   vp->parent = parent;
   vp->vop = parent->vop;
   vp->fop = parent->fop;
   vp->data = tdo;
   vp->originMount = parent->originMount;
   vp->type = VNODE_TYPE_DIR;
-  vp->mode = type_to_mode(vp->type, fs->permission);
-  vp->gid = fs->gid;
-  vp->uid = fs->uid;
+  vp->mode = tdo->mode;
+  vp->gid = tdo->gid;
+  vp->uid = tdo->uid;
 
   ret = VfsHashInsert(vp, (uint32_t)tdo);
   *vpp = vp;

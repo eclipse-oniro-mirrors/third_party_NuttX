@@ -191,8 +191,8 @@ int fp_open(char *fullpath, int oflags, mode_t mode)
           goto errout_without_count;
         }
       if (vnode->type == VNODE_TYPE_BLK) {
-          fd = block_proxy(fullpath, oflags);
           VnodeDrop();
+          fd = block_proxy(fullpath, oflags);
           if (fd < 0)
             {
               ret = fd;

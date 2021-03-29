@@ -507,7 +507,6 @@ int files_allocate(struct Vnode *vnode_ptr, int oflags, off_t pos, void *priv, i
 static int files_close_internal(int fd, LosProcessCB *processCB)
 {
   int ret = OK;
-  struct file *filep = NULL;
   struct filelist *list = NULL;
   struct files_struct *process_files = NULL;
 
@@ -544,15 +543,18 @@ static int files_close_internal(int fd, LosProcessCB *processCB)
 
   /* The filep->f_refcount may not be zero here, when the filep is shared in parent-child processes.
      so, upon closing the filep in current process, relevant region must be released immediately */
-
-  filep = &list->fl_files[fd];
+#ifdef LOSCFG_KERNEL_VM
+  struct file *filep = &list->fl_files[fd];
 
   OsVmmFileRegionFree(filep, processCB);
+#endif
 
   list->fl_files[fd].f_refcount--;
   if (list->fl_files[fd].f_refcount == 0)
     {
+#ifdef LOSCFG_KERNEL_VM
       dec_mapping_nolock(filep->f_mapping);
+#endif
       ret = _files_close(&list->fl_files[fd]);
       if (ret == OK)
         {

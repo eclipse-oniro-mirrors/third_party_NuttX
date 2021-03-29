@@ -303,7 +303,9 @@ int fp_open(char *fullpath, int oflags, mode_t mode)
 
   /* we do not bother to handle the NULL scenario, if so, page-cache feature will not be used
    * when we do the file fault */
+#ifdef LOSCFG_KERNEL_VM
   add_mapping(filep, fullpath);
+#endif
 
   return fd;
 

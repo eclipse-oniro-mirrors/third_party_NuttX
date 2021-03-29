@@ -190,6 +190,7 @@ int fp_open(char *fullpath, int oflags, mode_t mode)
           ret = -EINVAL;
           goto errout_without_count;
         }
+#ifdef LOSCFG_FS_VFS_BLOCK_DEVICE
       if (vnode->type == VNODE_TYPE_BLK) {
           fd = block_proxy(fullpath, oflags);
           VnodeDrop();
@@ -200,6 +201,7 @@ int fp_open(char *fullpath, int oflags, mode_t mode)
             }
          return fd;
       }
+#endif
       if ((oflags & O_CREAT) && (oflags & O_EXCL))
         {
           ret = -EEXIST;

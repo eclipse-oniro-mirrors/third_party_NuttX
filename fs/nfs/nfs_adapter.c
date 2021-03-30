@@ -229,14 +229,17 @@ static int nfs_fileupdate(struct nfsmount *nmp, char *filename,
 
 int vfs_nfs_reclaim(struct Vnode *node)
 {
+  struct nfsnode  *prev = NULL;
+  struct nfsnode  *curr = NULL;
+  struct nfsmount *nmp = NULL;
+  struct nfsnode  *np = NULL;
   if (node->data == NULL)
     {
       return OK;
     }
-  struct nfsmount *nmp = (struct nfsmount *)(node->originMount->data);
-  struct nfsnode  *np = (struct nfsnode*)(node->data);
-  struct nfsnode  *prev = NULL;
-  struct nfsnode  *curr = NULL;
+  nmp = (struct nfsmount *)(node->originMount->data);
+  nfs_mux_take(nmp);
+  np = (struct nfsnode*)(node->data);
   int ret;
 
   if (np->n_crefs > 1)
@@ -291,6 +294,7 @@ int vfs_nfs_reclaim(struct Vnode *node)
         }
     }
 
+  nfs_mux_release(nmp);
   return ret;
 }
 
@@ -844,17 +848,21 @@ int vfs_nfs_lookup(struct Vnode *parent, const char *path, int len, struct Vnode
   struct nfs_fattr obj_attributes;
   struct nfsmount *nmp;
   char filename[len + 1];
-  (void)memcpy_s(filename, (len + 1), path, len);
-  filename[len] = '\0';
   struct file_handle fhandle;
-  struct nfsnode *parent_nfs_node = (struct nfsnode *)parent->data;
-  fhandle.length = parent_nfs_node->n_fhsize;
-  memcpy_s(&(fhandle.handle), fhandle.length, &(parent_nfs_node->n_fhandle), parent_nfs_node->n_fhsize);
-
+  struct nfsnode *parent_nfs_node = NULL;
+  struct nfsnode *nfs_node = NULL;
   nmp = (struct nfsmount *)(parent->originMount->data);
+  nfs_mux_take(nmp);
+  parent_nfs_node = (struct nfsnode *)parent->data;
+  fhandle.length = parent_nfs_node->n_fhsize;
+  (void)memcpy_s(&(fhandle.handle), fhandle.length, &(parent_nfs_node->n_fhandle), parent_nfs_node->n_fhsize);
+  filename[len] = '\0';
+  (void)memcpy_s(filename, (len + 1), path, len);
+
   ret = nfs_lookup(nmp, filename, &fhandle, &obj_attributes, NULL);
   if (ret != OK)
     {
+      nfs_mux_release(nmp);
       return -ENOENT;
     }
 
@@ -862,7 +870,7 @@ int vfs_nfs_lookup(struct Vnode *parent, const char *path, int len, struct Vnode
    *
    * Copy the file handle.
    */
-  struct nfsnode *nfs_node = zalloc(sizeof(struct nfsnode));
+  nfs_node = zalloc(sizeof(struct nfsnode));
   nfs_node->n_fhsize = (uint8_t)fhandle.length;
   memcpy_s(&(nfs_node->n_fhandle), nfs_node->n_fhsize, &(fhandle.handle), fhandle.length);
   nfs_node->n_name = zalloc(sizeof(filename));
@@ -880,12 +888,16 @@ int vfs_nfs_lookup(struct Vnode *parent, const char *path, int len, struct Vnode
   (*vpp)->mode = type_to_mode((*vpp)->type, nmp->nm_permission);
   (*vpp)->gid = nmp->nm_gid;
   (*vpp)->uid = nmp->nm_uid;
+  nfs_mux_release(nmp);
   return OK;
 }
 
 int vfs_nfs_stat(struct Vnode *node, struct stat *buf)
 {
-  struct nfsnode *nfs_node = (struct nfsnode *)node->data;
+  struct nfsnode *nfs_node = NULL;
+  struct nfsmount *nmp = (struct nfsmount *)(node->originMount->data);
+  nfs_mux_take(nmp);
+  nfs_node = (struct nfsnode *)node->data;
   buf->st_mode = node->mode;
   buf->st_gid = node->gid;
   buf->st_uid = node->uid;
@@ -895,6 +907,7 @@ int vfs_nfs_stat(struct Vnode *node, struct stat *buf)
   buf->st_mtime   = nfs_node->n_mtime;
   buf->st_atime   = nfs_node->n_atime;
   buf->st_ctime   = nfs_node->n_ctime;
+  nfs_mux_release(nmp);
   return OK;
 }
 
@@ -902,12 +915,13 @@ int vfs_nfs_opendir(struct Vnode *node, struct fs_dirent_s *dir)
 {
   int ret;
   struct nfsdir_s *nfs_dir = NULL;
-  struct nfsnode *nfs_node = (struct nfsnode *)node->data;
+  struct nfsnode *nfs_node = NULL;
   struct nfsmount *nmp = (struct nfsmount *)(node->originMount->data);
   if (node->type != VNODE_TYPE_DIR) {
       return -ENOTDIR;
   }
   nfs_mux_take(nmp);
+  nfs_node = (struct nfsnode *)node->data;
   ret = nfs_checkmount(nmp);
   if (ret != OK) {
       ret = -ret;
@@ -985,13 +999,8 @@ int vfs_nfs_readdir(struct Vnode *node, struct fs_dirent_s *dir)
       nfs_dir->nfs_entries = NULL;
       goto errout_with_mutex;
     }
-  while (1)
+  while (i < dir->read_cnt)
     {
-      if (i >= MAX_DIRENT_NUM || i >= dir->read_cnt)
-        {
-          break;
-        }
-
       if (!nfs_dir->nfs_entries)
         {
           entry_pos = nfs_dir->nfs_entries;
@@ -1294,10 +1303,9 @@ int vfs_nfs_rename(struct Vnode *from_vnode, struct Vnode *to_parent,
   uint32_t *ptr = NULL;
   struct Vnode *to_vnode = NULL;
   struct Vnode *from_parent = from_vnode->parent;
+  struct nfsnode *from_node = NULL;
+  struct nfsnode *to_node = NULL;
   struct nfsmount *nmp = (struct nfsmount *)(to_parent->originMount->data);
-
-  struct nfsnode *from_node = (struct nfsnode *)from_parent->data;
-  struct nfsnode *to_node = (struct nfsnode *)to_parent->data;
 
   nfs_mux_take(nmp);
   error = nfs_checkmount(nmp);
@@ -1306,6 +1314,10 @@ int vfs_nfs_rename(struct Vnode *from_vnode, struct Vnode *to_parent,
       PRINTK("ERROR: nfs_checkmount failed: %d\n", error);
       goto errout_with_mutex;
     }
+
+  from_node = (struct nfsnode *)from_parent->data;
+  to_node = (struct nfsnode *)to_parent->data;
+
   ptr    = (uint32_t *)&nmp->nm_msgbuffer.renamef.rename;
   reqlen = 0;
 
@@ -1381,7 +1393,7 @@ errout_with_mutex:
 int vfs_nfs_mkdir(struct Vnode *parent, const char *dirname, mode_t mode, struct Vnode **vpp)
 {
   struct nfsmount *nmp = (struct nfsmount *)(parent->originMount->data);
-  struct nfsnode *parent_nfs_node = (struct nfsnode *)parent->data;
+  struct nfsnode *parent_nfs_node = NULL;
   struct nfs_fattr obj_attributes;
   struct nfsnode *target_node = NULL;
   struct file_handle fhandle;
@@ -1404,6 +1416,8 @@ int vfs_nfs_mkdir(struct Vnode *parent, const char *dirname, mode_t mode, struct
       PRINTK("ERROR: nfs_checkmount: %d\n", error);
       goto errout_with_mutex;
     }
+
+  parent_nfs_node = (struct nfsnode *)parent->data;
 
   /* Format the MKDIR call message arguments */
 
@@ -1538,14 +1552,12 @@ int vfs_nfs_write(struct file *filep, const char *buffer, size_t buflen)
 
   struct Vnode *node = filep->f_vnode;
   nmp = (struct nfsmount *)(node->originMount->data);
-
-  np  = (struct nfsnode *)node->data;
-
   DEBUGASSERT(nmp != NULL);
 
   /* Make sure that the mount is still healthy */
 
   nfs_mux_take(nmp);
+  np  = (struct nfsnode *)node->data;
   error = nfs_checkmount(nmp);
   if (error != OK)
     {
@@ -1744,14 +1756,15 @@ errout_with_mutex:
 off_t vfs_nfs_seek(struct file *filep, off_t offset, int whence)
 {
   struct Vnode *node = filep->f_vnode;
+  struct nfsnode  *np = NULL;
   struct nfsmount *nmp = (struct nfsmount *)(node->originMount->data);
-  struct nfsnode  *np = (struct nfsnode *)node->data;
   int                        error;
   off_t                      position;
 
   /* Make sure that the mount is still healthy */
 
   nfs_mux_take(nmp);
+  np = (struct nfsnode *)node->data;
   error = nfs_checkmount(nmp);
   if (error != OK)
     {
@@ -1825,13 +1838,12 @@ ssize_t vfs_nfs_read(struct file *filep, char *buffer, size_t buflen)
   struct Vnode *node = filep->f_vnode;
   struct nfsmount *nmp = (struct nfsmount *)(node->originMount->data);
 
-  np  = (struct nfsnode *)node->data;
-
   DEBUGASSERT(nmp != NULL);
 
   /* Make sure that the mount is still healthy */
 
   nfs_mux_take(nmp);
+  np  = (struct nfsnode *)node->data;
   error = nfs_checkmount(nmp);
   if (error != OK)
     {
@@ -2147,8 +2159,8 @@ int vfs_nfs_create(struct Vnode *parent, const char *filename, int mode, struct 
 int vfs_nfs_unlink(struct Vnode *parent, struct Vnode *target, char *filename)
 {
   struct nfsmount *nmp = (struct nfsmount *)(parent->originMount->data);
-  struct nfsnode  *parent_node = (struct nfsnode*)(parent->data);
-  struct nfsnode  *target_node = (struct nfsnode*)(target->data);
+  struct nfsnode  *parent_node = NULL;
+  struct nfsnode  *target_node = NULL;
   int reqlen;
   int namelen;
   uint32_t *ptr = NULL;
@@ -2161,6 +2173,9 @@ int vfs_nfs_unlink(struct Vnode *parent, struct Vnode *target, char *filename)
       PRINTK("ERROR: nfs_checkmount failed: %d\n", error);
       goto errout_with_mutex;
     }
+
+  parent_node = (struct nfsnode*)(parent->data);
+  target_node = (struct nfsnode*)(target->data);
 
   if (target_node->n_type == NFDIR)
     {
@@ -2208,8 +2223,8 @@ errout_with_mutex:
 int vfs_nfs_rmdir(struct Vnode *parent, struct Vnode *target, char *dirname)
 {
   struct nfsmount *nmp = (struct nfsmount *)(parent->originMount->data);
-  struct nfsnode  *parent_node = (struct nfsnode*)(parent->data);
-  struct nfsnode  *target_node = (struct nfsnode*)(target->data);
+  struct nfsnode  *parent_node = NULL;
+  struct nfsnode  *target_node = NULL;
   int reqlen;
   int namelen;
   uint32_t *ptr = NULL;
@@ -2227,6 +2242,9 @@ int vfs_nfs_rmdir(struct Vnode *parent, struct Vnode *target, char *dirname)
       PRINTK("ERROR: nfs_checkmount failed: %d\n", error);
       goto errout_with_mutex;
     }
+
+  parent_node = (struct nfsnode*)(parent->data);
+  target_node = (struct nfsnode*)(target->data);
   /* Set up the RMDIR call message arguments */
 
   ptr    = (uint32_t *)&nmp->nm_msgbuffer.rmdir.rmdir;
@@ -2266,7 +2284,10 @@ errout_with_mutex:
 
 int vfs_nfs_close(struct Vnode *node)
 {
-  struct nfsnode  *np = (struct nfsnode*)(node->data);
+  struct nfsmount *nmp = (struct nfsmount *)(node->originMount->data);
+  struct nfsnode  *np = NULL;
+  nfs_mux_take(nmp);
+  np = (struct nfsnode*)(node->data);
   /* Decrement the reference count.  If the reference count would not
    * decrement to zero, then that is all we have to do.
    */
@@ -2275,6 +2296,7 @@ int vfs_nfs_close(struct Vnode *node)
     {
       np->n_crefs--;
     }
+  nfs_mux_release(nmp);
   return OK;
 }
 
@@ -2553,8 +2575,12 @@ int vfs_nfs_truncate(struct Vnode *node, off_t length)
   int reqlen;
   int error;
 
-  struct nfsmount *nmp = (struct nfsmount *)(node->originMount->data);
-  struct nfsnode  *np = (struct nfsnode*)(node->data);
+  struct nfsmount *nmp = NULL;
+  struct nfsnode  *np = NULL;
+
+  nmp = (struct nfsmount *)(node->originMount->data);
+  nfs_mux_take(nmp);
+  np = (struct nfsnode*)(node->data);
 
   /* Create the SETATTR RPC call arguments */
 
@@ -2591,6 +2617,7 @@ int vfs_nfs_truncate(struct Vnode *node, off_t length)
                       (void *)nmp->nm_iobuffer, nmp->nm_buflen);
   if (error != OK)
     {
+      nfs_mux_release(nmp);
       PRINTK("ERROR: nfs_request failed: %d\n", error);
       return -error;
     }
@@ -2598,6 +2625,7 @@ int vfs_nfs_truncate(struct Vnode *node, off_t length)
   /* Indicate that the file now has zero length */
 
   np->n_size = length;
+  nfs_mux_release(nmp);
   return OK;
 }
 

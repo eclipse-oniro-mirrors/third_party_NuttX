@@ -140,7 +140,9 @@ int do_unlink(int dirfd, const char *pathname)
 
   VnodeFree(vnode);
   VnodeDrop();
+#ifdef LOSCFG_KERNEL_VM
   (void)remove_mapping(fullpath);
+#endif
   /* Successfully unlinked */
 
   free(fullpath);

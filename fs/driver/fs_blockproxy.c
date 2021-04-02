@@ -227,7 +227,9 @@ int block_proxy(FAR const char *blkdev, int oflags)
   VnodeDrop();
 
   /* Block char device is no need for file mapping */
+#ifdef LOSCFG_KERNEL_VM
   (void)remove_mapping(chardev);
+#endif
 
   /* Free the allocate character driver name and return the open file
    * descriptor.

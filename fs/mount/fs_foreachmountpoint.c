@@ -166,17 +166,22 @@ static int mountpoint_filter(struct Vnode *node,
 
 int foreach_mountpoint(foreach_mountpoint_t handler, void *arg)
 {
-#ifdef VFS_IMPL_LATER
-  struct enum_mountpoint_s info;
-
-  /* Let foreach_vnode do the real work */
-
-  info.handler = handler;
-  info.arg     = arg;
-
-  return foreach_vnode(mountpoint_filter, (void *)&info);
-#endif
-  return 0;
+  int ret = 0;
+  struct Mount *mnt = NULL;
+  struct statfs statBuf = {0};
+  LIST_HEAD *mntList = GetMountList();
+  LOS_DL_LIST_FOR_EACH_ENTRY(mnt, mntList, struct Mount, mountList)
+    {
+      if (mnt->ops->Statfs != NULL)
+        {
+           ret = mnt->ops->Statfs(mnt, &statBuf);
+           if (ret == OK)
+             {
+                (void)handler(mnt->pathName, &statBuf, arg);
+             }
+        }
+    }
+  return ret;
 }
 
 #endif

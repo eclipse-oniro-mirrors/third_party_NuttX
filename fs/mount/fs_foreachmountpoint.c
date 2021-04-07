@@ -181,7 +181,7 @@ int foreach_mountpoint(foreach_mountpoint_t handler, void *arg)
              }
         }
     }
-  return ret;
+  return 0;
 }
 
 #endif

@@ -104,14 +104,13 @@ int register_blockdriver(const char *path,
 
   VnodeHold();
   ret = VnodeLookup(path, &vp, V_CREATE | V_CACHE | V_DUMMY);
-  if (ret >= 0)
+  if (ret == OK)
     {
       /* We have it, now populate it with block driver specific information. */
 
       vp->type = VNODE_TYPE_BLK;
       vp->data = data;
       vp->mode = mode;
-      ret = OK;
     }
 
   VnodeDrop();

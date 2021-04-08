@@ -166,7 +166,7 @@ static int mountpoint_filter(struct Vnode *node,
 
 int foreach_mountpoint(foreach_mountpoint_t handler, void *arg)
 {
-  int ret = 0;
+  int ret;
   struct Mount *mnt = NULL;
   struct statfs statBuf = {0};
   LIST_HEAD *mntList = GetMountList();

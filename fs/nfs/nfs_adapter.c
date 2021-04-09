@@ -2229,12 +2229,6 @@ int vfs_nfs_rmdir(struct Vnode *parent, struct Vnode *target, char *dirname)
   int namelen;
   uint32_t *ptr = NULL;
   int error;
-  if (target_node->n_type != NFDIR)
-    {
-      PRINTK("ERROR: try to remove a non-dir\n");
-      return -ENOTDIR;
-    }
-
   nfs_mux_take(nmp);
   error = nfs_checkmount(nmp);
   if (error != OK)
@@ -2245,6 +2239,13 @@ int vfs_nfs_rmdir(struct Vnode *parent, struct Vnode *target, char *dirname)
 
   parent_node = (struct nfsnode*)(parent->data);
   target_node = (struct nfsnode*)(target->data);
+
+  if (target_node->n_type != NFDIR)
+    {
+      PRINTK("ERROR: try to remove a non-dir\n");
+      return -ENOTDIR;
+    }
+
   /* Set up the RMDIR call message arguments */
 
   ptr    = (uint32_t *)&nmp->nm_msgbuffer.rmdir.rmdir;

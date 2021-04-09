@@ -113,7 +113,6 @@ int register_driver(const char *path, const struct file_operations_vfs *fops,
       vnode->data = data;
       vnode->mode = mode;
       vnode->fop = (struct file_operations_vfs *)fops;
-      ret = OK;
     }
 
   VnodeDrop();

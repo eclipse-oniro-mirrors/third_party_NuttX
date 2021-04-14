@@ -113,7 +113,8 @@ int bchlib_readsector(FAR struct bchlib_s *bch, unsigned long long sector)
         }
 
       bch->sector = (unsigned long long)-1;
-      ret = los_disk_read(bch->disk->disk_id, (FAR void *)bch->buffer, sector, 1);
+      /* useRead is set TRUE, it'll use read block for not reading large data */
+      ret = los_disk_read(bch->disk->disk_id, (FAR void *)bch->buffer, sector, 1, TRUE);
       if (ret < 0)
         {
           PRINTK("Read failed: %d\n", ret);

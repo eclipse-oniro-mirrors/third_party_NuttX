@@ -42,7 +42,6 @@
  ****************************************************************************/
 
 #include "vfs_config.h"
-#include "menuconfig.h"
 #include "compiler.h"
 
 #include "poll.h"

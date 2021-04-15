@@ -159,7 +159,8 @@ ssize_t bchlib_read(FAR void *handle, FAR char *buffer, loff_t offset, size_t le
         {
           nsectors = bch->nsectors - sector;
         }
-      ret = los_disk_read(bch->disk->disk_id, (FAR void *)buffer, sector + bch->sectstart, nsectors);
+      /* No need for reading large contiguous data, useRead(param 4) is set TRUE */
+      ret = los_disk_read(bch->disk->disk_id, (FAR void *)buffer, sector + bch->sectstart, nsectors, TRUE);
 
       if (ret < 0)
         {

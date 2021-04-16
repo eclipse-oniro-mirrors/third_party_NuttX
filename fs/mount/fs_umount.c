@@ -85,6 +85,9 @@ BOOL fs_in_use(struct Mount *mnt, const char *target)
     return VnodeInUseIter(mnt->vnodeCovered);
 }
 
+struct Vnode *g_coveredVnodeList[100];
+int g_coveredVnodeTop = 0;
+
 int umount(const char *target)
 {
   struct Vnode *mountpt_vnode = NULL;
@@ -192,6 +195,10 @@ int umount(const char *target)
 #endif
   covered_vnode->newMount = NULL;
   covered_vnode->flag &= ~(VNODE_FLAG_MOUNT_NEW);
+  if (g_coveredVnodeTop < 100)
+    {
+      g_coveredVnodeList[g_coveredVnodeTop++] = covered_vnode;
+    }
   VnodeDrop();
 
   return OK;

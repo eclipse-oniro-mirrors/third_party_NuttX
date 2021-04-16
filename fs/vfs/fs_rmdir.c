@@ -152,7 +152,7 @@ int do_rmdir(int dirfd, const char *pathname)
       goto errout_with_lock;
   }
 
-  if (VfsVnodePermissionCheck(vnode->parent, WRITE_OP)) {
+  if (VfsVnodePermissionCheck(vnode->parent, (WRITE_OP | EXEC_OP))) {
       ret = -EACCES;
       goto errout_with_lock;
   }

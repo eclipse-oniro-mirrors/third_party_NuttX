@@ -226,7 +226,7 @@ int fp_open(char *fullpath, int oflags, mode_t mode)
   if ((ret != OK) && (oflags & O_CREAT) && vnode)
     {
       /* if file not exist, but parent dir of the file is exist */
-      if (VfsVnodePermissionCheck(vnode, WRITE_OP))
+      if (VfsVnodePermissionCheck(vnode, (WRITE_OP | EXEC_OP)))
         {
           ret = -EACCES;
           VnodeDrop();

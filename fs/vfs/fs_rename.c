@@ -76,8 +76,8 @@ static int check_rename_target(struct Vnode *old_vnode, struct Vnode *old_parent
       return -EBUSY;
     }
 
-  if (VfsVnodePermissionCheck(old_parent_vnode, WRITE_OP)
-      || VfsVnodePermissionCheck(new_parent_vnode, WRITE_OP))
+  if (VfsVnodePermissionCheck(old_parent_vnode, (WRITE_OP | EXEC_OP))
+      || VfsVnodePermissionCheck(new_parent_vnode, (WRITE_OP | EXEC_OP)))
     {
       return -EACCES;
     }

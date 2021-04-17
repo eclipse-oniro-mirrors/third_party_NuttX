@@ -63,7 +63,7 @@ static int check_target(struct Vnode *vnode)
       return -EBUSY;
     }
 
-  if (VfsVnodePermissionCheck(vnode->parent, WRITE_OP))
+  if (VfsVnodePermissionCheck(vnode->parent, (WRITE_OP | EXEC_OP)))
     {
       return -EACCES;
     }

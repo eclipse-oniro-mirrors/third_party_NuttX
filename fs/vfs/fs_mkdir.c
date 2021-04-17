@@ -114,7 +114,7 @@ int do_mkdir(int dirfd, const char *pathname, mode_t mode)
     }
   parentVnode->useCount++;
 
-  if (VfsVnodePermissionCheck(parentVnode, WRITE_OP))
+  if (VfsVnodePermissionCheck(parentVnode, (WRITE_OP | EXEC_OP)))
     {
       ret = -EACCES;
       goto errout_with_count;

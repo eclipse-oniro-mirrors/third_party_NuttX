@@ -344,6 +344,12 @@ int do_open(int dirfd, const char *path, int oflags, mode_t mode)
       goto errout;
     }
 
+  if ((oflags & (O_WRONLY | O_CREAT)) != 0)
+    {
+      mode &= ~GetUmask();
+      mode &= (S_IRWXU | S_IRWXG | S_IRWXO);
+    }
+
   fd = fp_open(fullpath, oflags, mode);
   if (fd < 0)
     {
@@ -377,12 +383,6 @@ int open(const char *path, int oflags, ...)
   va_start(ap, oflags);
   mode = va_arg(ap, int);
   va_end(ap);
-
-  if ((oflags & (O_WRONLY | O_CREAT)) != 0)
-    {
-      mode &= ~GetUmask();
-      mode &= (S_IRWXU|S_IRWXG|S_IRWXO);
-    }
 #endif
 
   return do_open(AT_FDCWD, path, oflags, mode);

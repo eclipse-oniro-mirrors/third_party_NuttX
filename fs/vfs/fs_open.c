@@ -347,7 +347,7 @@ int do_open(int dirfd, const char *path, int oflags, mode_t mode)
   if ((oflags & (O_WRONLY | O_CREAT)) != 0)
     {
       mode &= ~GetUmask();
-      mode &= (S_IRWXU|S_IRWXG|S_IRWXO);
+      mode &= (S_IRWXU | S_IRWXG | S_IRWXO);
     }
 
   fd = fp_open(fullpath, oflags, mode);

@@ -196,7 +196,9 @@ int do_rename(int oldfd, const char *oldpath, int newfd, const char *newpath)
       ret = -ENOSYS;
       goto errout_with_vnode;
     }
+  new_parent_vnode->useCount++;
   ret = old_vnode->vop->Rename(old_vnode, new_parent_vnode, oldname, newname);
+  new_parent_vnode->useCount--;
   if (ret < 0)
     {
       goto errout_with_vnode;

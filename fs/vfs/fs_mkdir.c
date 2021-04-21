@@ -50,8 +50,6 @@
 #include "fs/path_cache.h"
 #include "fs/vfs_util.h"
 
-struct Vnode *g_parentOfCoveredVnode = NULL;
-
 /****************************************************************************
  * Private Functions
  ****************************************************************************/
@@ -141,11 +139,6 @@ int do_mkdir(int dirfd, const char *pathname, mode_t mode)
       // alloc name cache failed is not a critical problem, let it go.
       PRINT_ERR("alloc path cache %s failed\n", dirname);
   }
-  if (!strcmp(dirname, "kernel"))
-    {
-        PRINT_ERR("%s-%d: vnode_of_kernel: %p, inode=%p \n", __FUNCTION__, __LINE__, vnode, vnode->data);
-        g_parentOfCoveredVnode = vnode;
-    }
   parentVnode->useCount--;
   VnodeDrop();
 out:

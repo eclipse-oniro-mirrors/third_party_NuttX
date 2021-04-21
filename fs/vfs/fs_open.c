@@ -158,6 +158,7 @@ static int do_creat(struct Vnode **node, char *fullpath, mode_t mode)
       ret = -ENOSYS;
     }
 
+  parentNode->useCount--;
   if (ret < 0)
     {
       return ret;
@@ -235,7 +236,6 @@ int fp_open(char *fullpath, int oflags, mode_t mode)
           goto errout_without_count;
         }
       ret = do_creat(&vnode, fullpath, mode);
-      vnode->useCount--;
       if (ret != OK)
         {
           VnodeDrop();

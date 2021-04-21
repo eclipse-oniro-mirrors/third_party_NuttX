@@ -259,7 +259,9 @@ int mount(const char *source, const char *target,
 
   mnt = MountAlloc(mountpt_vnode, (struct MountOps*)mops);
 
+  mountpt_vnode->useCount++;
   ret = mops->Mount(mnt, device, data);
+  mountpt_vnode->useCount--;
   if (ret != 0)
     {
       /* The vnode is unhappy with the blkdrvr for some reason.  Back out

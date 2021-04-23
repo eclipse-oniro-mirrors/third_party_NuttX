@@ -2075,83 +2075,85 @@ int vfs_nfs_create(struct Vnode *parent, const char *filename, int mode, struct 
 
   /* Check for success */
 
-  if (error == OK)
+  if (error != OK)
     {
-      /* Parse the returned data */
-
-      ptr = (uint32_t *)&((struct rpc_reply_create *)
-          nmp->nm_iobuffer)->create;
-
-      /* Save the file handle in the file data structure */
-
-      tmp = *ptr++;  /* handle_follows */
-      if (!tmp)
-        {
-          PRINTK("ERROR: no file handle follows\n");
-          error = EINVAL;
-          goto errout_with_mutex;
-        }
-
-      tmp = *ptr++;
-      tmp = fxdr_unsigned(uint32_t, tmp);
-      DEBUGASSERT(tmp <= NFSX_V3FHMAX);
-
-      np->n_fhsize      = (uint8_t)tmp;
-      (void)memcpy_s(&np->n_fhandle, tmp, ptr, tmp);
-      ptr += uint32_increment(tmp);
-
-      /* Save the attributes in the file data structure */
-
-      tmp = *ptr;  /* handle_follows */
-      if (!tmp)
-        {
-          PRINTK("WARNING: no file attributes\n");
-        }
-      else
-        {
-          /* Initialize the file attributes */
-
-          nfs_attrupdate(np, (struct nfs_fattr *)ptr);
-        }
-
-      /* Any following dir_wcc data is ignored for now */
-      np->n_crefs = 1;
-
-      /* Attach the private data to the struct file instance */
-
-      /* Then insert the new instance at the head of the list in the mountpoint
-       * tructure. It needs to be there (1) to handle error conditions that effect
-       * all files, and (2) to inform the umount logic that we are busy.  We
-       * cannot unmount the file system if this list is not empty!
-       */
-
-      np->n_next   = nmp->nm_head;
-      nmp->nm_head = np;
-
-      np->n_flags |= (NFSNODE_OPEN | NFSNODE_MODIFIED);
-      np->n_name = zalloc(namelen + 1);
-      memcpy_s(np->n_name, (namelen + 1), filename, (namelen + 1));
-
-      (void)VnodeAlloc(&nfs_vops, vpp);
-      (*vpp)->parent = parent;
-      (*vpp)->fop = &nfs_fops;
-      (*vpp)->originMount = parent->originMount;
-      (*vpp)->data = np;
-      (*vpp)->type = filetype_to_vnodetype(np->n_type);
-      (*vpp)->mode = type_to_mode((*vpp)->type, nmp->nm_permission);
-      (*vpp)->gid = nmp->nm_gid;
-      (*vpp)->uid = nmp->nm_uid;
-
+      *vpp = NULL;
+      goto errout_with_mutex;
     }
+    
+  /* Parse the returned data */
+
+  ptr = (uint32_t *)&((struct rpc_reply_create *)
+      nmp->nm_iobuffer)->create;
+
+  /* Save the file handle in the file data structure */
+
+  tmp = *ptr++;  /* handle_follows */
+  if (!tmp)
+    {
+      PRINTK("ERROR: no file handle follows\n");
+      error = EINVAL;
+      goto errout_with_mutex;
+    }
+
+  tmp = *ptr++;
+  tmp = fxdr_unsigned(uint32_t, tmp);
+  DEBUGASSERT(tmp <= NFSX_V3FHMAX);
+
+  np->n_fhsize      = (uint8_t)tmp;
+  (void)memcpy_s(&np->n_fhandle, tmp, ptr, tmp);
+  ptr += uint32_increment(tmp);
+
+  /* Save the attributes in the file data structure */
+
+  tmp = *ptr;  /* handle_follows */
+  if (!tmp)
+    {
+      PRINTK("WARNING: no file attributes\n");
+    }
+  else
+    {
+      /* Initialize the file attributes */
+
+      nfs_attrupdate(np, (struct nfs_fattr *)ptr);
+    }
+
+  /* Any following dir_wcc data is ignored for now */
+  np->n_crefs = 1;
+
+  /* Attach the private data to the struct file instance */
+
+  /* Then insert the new instance at the head of the list in the mountpoint
+   * tructure. It needs to be there (1) to handle error conditions that effect
+   * all files, and (2) to inform the umount logic that we are busy.  We
+   * cannot unmount the file system if this list is not empty!
+   */
+
+  np->n_next   = nmp->nm_head;
+  nmp->nm_head = np;
+
+  np->n_flags |= (NFSNODE_OPEN | NFSNODE_MODIFIED);
+  np->n_name = zalloc(namelen + 1);
+  memcpy_s(np->n_name, (namelen + 1), filename, (namelen + 1));
+
+  (void)VnodeAlloc(&nfs_vops, vpp);
+  (*vpp)->parent = parent;
+  (*vpp)->fop = &nfs_fops;
+  (*vpp)->originMount = parent->originMount;
+  (*vpp)->data = np;
+  (*vpp)->type = filetype_to_vnodetype(np->n_type);
+  (*vpp)->mode = type_to_mode((*vpp)->type, nmp->nm_permission);
+  (*vpp)->gid = nmp->nm_gid;
+  (*vpp)->uid = nmp->nm_uid;
 
   nfs_mux_release(nmp);
   return OK;
 
-  errout_with_mutex:
-    if (np)
-      {
-        free(np);
-      }
+errout_with_mutex:
+  if (np)
+    {
+      free(np);
+    }
   nfs_mux_release(nmp);
   return -error;
 }

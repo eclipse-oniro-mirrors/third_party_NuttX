@@ -1802,7 +1802,6 @@ int tmpfs_lookup(struct Vnode *parent, const char *relPath, int len, struct Vnod
           goto errout_with_objects;
         }
 
-      vp->parent = parent;
       vp->vop = parent->vop;
       vp->fop = parent->fop;
       vp->data = to;
@@ -1814,6 +1813,7 @@ int tmpfs_lookup(struct Vnode *parent, const char *relPath, int len, struct Vnod
 
       ret = VfsHashInsert(vp, (uint32_t)to);
     }
+  vp->parent = parent;
 
   *vpp = vp;
 

@@ -67,27 +67,36 @@
 
 int close_blockdriver(struct Vnode *vnode_ptr)
 {
-#ifdef VFS_IMPL_LATER
   int ret = 0; /* Assume success */
   los_part *part = NULL;
   los_disk *disk = NULL;
+  struct block_operations *bop = NULL;
 
   /* Sanity checks */
 
-  if (!vnode_ptr || !vnode_ptr->u.i_bops)
+  if (vnode_ptr == NULL || vnode_ptr->data == NULL)
     {
       ret = -EINVAL;
       goto errout;
     }
 
+  bop = (struct block_operations*)(((struct drv_data*)vnode_ptr->data)->ops);
+
+  if (bop == NULL) {
+      PRINT_ERR("vnode ops is null, not a valid block driver\n");
+      ret = -EINVAL;
+      goto errout;
+  }
+
   /* Verify that the vnode is a block driver. */
 
-  if (!INODE_IS_BLOCK(vnode_ptr))
+  if (vnode_ptr->type != VNODE_TYPE_BLK)
     {
-      fdbg("vnode is not a block driver\n");
+      PRINT_ERR("vnode is not a block driver\n");
       ret = -ENOTBLK;
       goto errout;
     }
+
 
   part = los_part_find(vnode_ptr);
   if (part != NULL)
@@ -96,15 +105,15 @@ int close_blockdriver(struct Vnode *vnode_ptr)
       if (disk == NULL)
         {
           ret = -EINVAL;
-          goto errout_with_vnode;
+          goto errout;
         }
 
       if (pthread_mutex_lock(&disk->disk_mutex) != ENOERR)
         {
           PRINT_ERR("%s %d, mutex lock fail!\n", __FUNCTION__, __LINE__);
-          vnode_release(vnode_ptr);
-          return -1;
+          return -EAGAIN;
         }
+
       if (disk->disk_status == STAT_INUSED)
         {
           /* Close the block driver.  Not that no mutually exclusive access
@@ -112,36 +121,26 @@ int close_blockdriver(struct Vnode *vnode_ptr)
           * if needed.
           */
 
-          if (vnode_ptr->u.i_bops->close != NULL)
+          if (bop->close != NULL)
             {
-              ret = vnode_ptr->u.i_bops->close(vnode_ptr);
+              ret = bop->close(vnode_ptr);
             }
         }
 
       if (pthread_mutex_unlock(&disk->disk_mutex) != ENOERR)
         {
           PRINT_ERR("%s %d, mutex unlock fail!\n", __FUNCTION__, __LINE__);
-          vnode_release(vnode_ptr);
-          return -1;
         }
 
     }
   else
     {
-      if ((vnode_ptr->i_flags & FSNODEFLAG_DELETED) == 0 && vnode_ptr->u.i_bops->close != NULL)
+      if (bop->close != NULL)
         {
-          ret = vnode_ptr->u.i_bops->close(vnode_ptr);
+          ret = bop->close(vnode_ptr);
         }
     }
 
-errout_with_vnode:
-
-  /* Then release the reference on the vnode */
-
-  vnode_release(vnode_ptr);
-
 errout:
   return ret;
-#endif
-  return 0;
 }

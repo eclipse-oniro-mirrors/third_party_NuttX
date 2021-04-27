@@ -78,7 +78,7 @@ static int file_truncate(struct file *filep, off_t length)
   vnode = filep->f_vnode;
   if (!vnode || !vnode->vop || !vnode->vop->Truncate)
     {
-      err = EBADF;
+      err = ENOSYS;
       goto errout;
     }
 

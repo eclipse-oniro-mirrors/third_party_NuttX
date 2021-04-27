@@ -110,7 +110,6 @@ ssize_t sendfile(int outfd, int infd, off_t *offset, size_t count);
  */
 
 extern int get_path_from_fd(int fd, char **path);
-extern int get_path_from_dirfd(int fd, char **path);
 bool get_bit(int i);
 
 /****************************************************************************

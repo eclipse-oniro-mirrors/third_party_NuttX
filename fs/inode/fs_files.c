@@ -701,13 +701,20 @@ int close_files(struct Vnode *vnode)
 
 void files_refer(int fd)
 {
+  struct file *filep = NULL;
+
   FAR struct filelist *list = sched_getfiles();
   if (!list || fd < 0 || fd >= CONFIG_NFILE_DESCRIPTORS)
     {
       return;
     }
+
   _files_semtake(list);
-  list->fl_files[fd].f_refcount++;
+  (void)fs_getfilep(fd, &filep);
+  if (filep != NULL)
+    {
+      filep->f_refcount++;
+    }
   _files_semgive(list);
 }
 

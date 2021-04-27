@@ -37,9 +37,6 @@
  * Included Files
  ****************************************************************************/
 
-#include "vfs_config.h"
-#include "sys/types.h"
-
 #include "errno.h"
 #include "unistd.h"
 #include "console.h"
@@ -75,6 +72,11 @@ static int fs_getfilep_normal(int fd, struct file **filep)
   struct filelist *list;
 
   *filep = (struct file *)NULL;
+
+  if (fd >= STDIN_FILENO && fd <= STDERR_FILENO)
+    {
+        fd = ConsoleUpdateFd();
+    }
 
   if ((unsigned int)fd >= CONFIG_NFILE_DESCRIPTORS)
     {

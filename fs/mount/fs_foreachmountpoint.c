@@ -36,110 +36,11 @@
 /****************************************************************************
  * Included Files
  ****************************************************************************/
-
 #include "vfs_config.h"
-
-#include "sys/statfs.h"
-
-#include "stdio.h"
-#include "stdlib.h"
-#include "string.h"
-#include "assert.h"
-#include "errno.h"
-
 #include "fs/fs.h"
-
 #include "fs/vnode.h"
-#include "limits.h"
 
 #ifndef CONFIG_DISABLE_MOUNTPOINT
-
-/****************************************************************************
- * Pre-processor Definitions
- ****************************************************************************/
-
-/****************************************************************************
- * Private Types
- ****************************************************************************/
-
-/* This structure just remembers the final consumer of the mountpoint
- * information (and its argument).
- */
-
-struct enum_mountpoint_s
-{
-  foreach_mountpoint_t handler;
-  void            *arg;
-};
-
-/****************************************************************************
- * Private Functions
- ****************************************************************************/
-#ifdef VFS_IMPL_LATER
-static int mountpoint_filter(struct Vnode *node,
-                             char dirpath[PATH_MAX], void *arg)
-{
-  struct enum_mountpoint_s *info = (struct enum_mountpoint_s *)arg;
-  struct statfs statbuf;
-  int pathlen;
-  int namlen;
-  int ret = OK;
-
-  DEBUGASSERT(node && info && info->handler);
-
-  /* Check if the vnode is a mountpoint.  Mountpoints must support statfs.
-   * If this one does not for some reason, then it will be ignored.
-   *
-   * The root node is a special case:  It has no operations (u.i_mops == NULL)
-   */
-
-  if (INODE_IS_MOUNTPT(node) && node->u.i_mops && node->u.i_mops->statfs)
-    {
-      /* Yes... get the full path to the vnode by concatenating the vnode
-       * name and the path to the directory containing the vnode.
-       */
-
-      pathlen = strlen(dirpath);
-      namlen  = strlen(node->i_name) + 1;
-
-      /* Make sure that this would not exceed the maximum path length */
-
-      if (pathlen + namlen >= PATH_MAX)
-        {
-          return -ENAMETOOLONG;
-        }
-
-      /* Append the vnode name to the directory path */
-
-      ret = snprintf_s(&dirpath[pathlen], PATH_MAX - pathlen, PATH_MAX - pathlen - 1, "/%s", node->i_name);
-      if (ret < 0)
-        {
-          return -ENAMETOOLONG;
-        }
-
-      /* Get the status of the file system */
-
-      ret = node->u.i_mops->statfs(node, &statbuf);
-      if (ret == OK)
-        {
-          /* And pass the full path and file system status to the handler */
-
-          if (strlen(dirpath) > 1) {
-              dirpath[strlen(dirpath) - 1] = '\0';
-          }
-
-          ret = info->handler(dirpath, &statbuf, info->arg);
-        }
-
-      /* Truncate the path name back to the correct length */
-
-      dirpath[pathlen] = '\0';
-    }
-
-  return ret;
-}
-#endif
-
 /****************************************************************************
  * Public Functions
  ****************************************************************************/

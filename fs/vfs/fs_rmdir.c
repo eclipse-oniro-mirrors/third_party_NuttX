@@ -68,8 +68,8 @@ static int check_target(struct Vnode *vnode, char *name) {
       return -EBUSY;
     }
 
-  if ((vnode->flag & VNODE_FLAG_MOUNT_NEW)
-      || (vnode->flag & VNODE_FLAG_MOUNT_ORIGIN))
+  if ((vnode->flag & VNODE_FLAG_MOUNT_ORIGIN)
+      || (vnode->flag & VNODE_FLAG_MOUNT_NEW))
     {
       return -EBUSY;
     }

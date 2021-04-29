@@ -82,7 +82,7 @@ BOOL fs_in_use(struct Mount *mnt, const char *target)
           return TRUE;
         }
     }
-    return VnodeInUseIter(mnt->vnodeCovered);
+    return VnodeInUseIter(mnt);
 }
 
 int umount(const char *target)
@@ -113,7 +113,7 @@ int umount(const char *target)
       goto errout;
     }
   /* Verify that the vnode is a mountpoint */
-  if (!mountpt_vnode || !(mountpt_vnode->flag & VNODE_FLAG_MOUNT_ORIGIN))
+  if (!mountpt_vnode || !(mountpt_vnode->flag & VNODE_FLAG_MOUNT_NEW))
     {
       ret = -EINVAL;
       goto errout;
@@ -127,7 +127,7 @@ int umount(const char *target)
       goto errout;
     }
   covered_vnode = mnt->vnodeBeCovered;
-  if (!covered_vnode || !(covered_vnode->flag & VNODE_FLAG_MOUNT_NEW))
+  if (!covered_vnode || !(covered_vnode->flag & VNODE_FLAG_MOUNT_ORIGIN))
     {
       ret = -EINVAL;
       goto errout;
@@ -191,7 +191,7 @@ int umount(const char *target)
     }
 #endif
   covered_vnode->newMount = NULL;
-  covered_vnode->flag &= ~(VNODE_FLAG_MOUNT_NEW);
+  covered_vnode->flag &= ~(VNODE_FLAG_MOUNT_ORIGIN);
   VnodeDrop();
 
   return OK;

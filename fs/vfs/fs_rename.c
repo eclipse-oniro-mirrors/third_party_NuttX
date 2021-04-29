@@ -86,13 +86,13 @@ static int check_rename_target(struct Vnode *old_vnode, struct Vnode *old_parent
     {
       return -EXDEV;
     }
-  if ((old_vnode->flag & VNODE_FLAG_MOUNT_NEW)
-       || (old_vnode->flag & VNODE_FLAG_MOUNT_ORIGIN))
+  if ((old_vnode->flag & VNODE_FLAG_MOUNT_ORIGIN)
+       || (old_vnode->flag & VNODE_FLAG_MOUNT_NEW))
     {
       return -EBUSY;
     }
-  if (new_vnode != NULL && ((new_vnode->flag & VNODE_FLAG_MOUNT_NEW)
-      || (new_vnode->flag & VNODE_FLAG_MOUNT_ORIGIN)))
+  if (new_vnode != NULL && ((new_vnode->flag & VNODE_FLAG_MOUNT_ORIGIN)
+      || (new_vnode->flag & VNODE_FLAG_MOUNT_NEW)))
     {
       return -EBUSY;
     }

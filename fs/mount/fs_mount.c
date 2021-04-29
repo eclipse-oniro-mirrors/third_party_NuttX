@@ -220,7 +220,7 @@ int mount(const char *source, const char *target,
       errcode = -EINVAL;
       goto errout_with_lock;
     }
-  if (mountpt_vnode->flag & VNODE_FLAG_MOUNT_ORIGIN)
+  if (mountpt_vnode->flag & VNODE_FLAG_MOUNT_NEW)
     {
       PRINT_ERR("can't mount to %s, already mounted.\n", target);
       errcode = -EINVAL;
@@ -280,8 +280,8 @@ int mount(const char *source, const char *target,
 #endif
       goto errout_with_mountpt;
     }
-  mnt->vnodeBeCovered->flag |= VNODE_FLAG_MOUNT_NEW;
-  mnt->vnodeCovered->flag |= VNODE_FLAG_MOUNT_ORIGIN;
+  mnt->vnodeBeCovered->flag |= VNODE_FLAG_MOUNT_ORIGIN;
+  mnt->vnodeCovered->flag |= VNODE_FLAG_MOUNT_NEW;
   mnt->ops = mops;
   mnt->mountFlags = mountflags;
   ret = strcpy_s(mnt->pathName, PATH_MAX, target);

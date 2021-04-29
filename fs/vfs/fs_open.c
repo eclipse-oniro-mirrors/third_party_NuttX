@@ -175,7 +175,7 @@ int fp_open(char *fullpath, int oflags, mode_t mode)
       if (vnode->type == VNODE_TYPE_BCHR)
         {
           ret = -EINVAL;
-		  VnodeDrop();
+          VnodeDrop();
           goto errout;
         }
 #ifdef LOSCFG_FS_VFS_BLOCK_DEVICE
@@ -220,7 +220,7 @@ int fp_open(char *fullpath, int oflags, mode_t mode)
           VnodeDrop();
           goto errout;
         }
-	  parentVnode = vnode;
+      parentVnode = vnode;
       ret = do_creat(parentVnode, fullpath, mode, &vnode);
       if (ret != OK)
         {

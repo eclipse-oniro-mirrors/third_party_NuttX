@@ -238,7 +238,7 @@ int mount(const char *source, const char *target,
 
       PRINTK("ERROR: Filesystem does not support bind\n");
       errcode = -ENOSYS;
-      goto errout_with_mountpt;
+      goto errout_with_lock;
     }
 
   /* Increment reference count for the reference we pass to the file system */
@@ -250,7 +250,7 @@ int mount(const char *source, const char *target,
       if (partition->mountpoint_name == NULL)
         {
           errcode = -ENOMEM;
-          goto errout_with_mountpt;
+          goto errout_with_lock;
         }
       (void)strncpy_s(partition->mountpoint_name, strlen(target) + 1, target, strlen(target));
       partition->mountpoint_name[strlen(target)] = '\0';

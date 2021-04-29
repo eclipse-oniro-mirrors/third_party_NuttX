@@ -128,11 +128,11 @@ int get_path_from_fd(int fd, char **path)
   return OK;
 }
 
-static int do_creat(struct Vnode **node, char *fullpath, mode_t mode)
+static int do_creat(struct Vnode *parentNode, char *fullpath, mode_t mode, struct Vnode **node)
 {
   int ret;
-  struct Vnode *parentNode = *node;
   char *name = strrchr(fullpath, '/') + 1;
+  parentNode->useCount++;
 
   if (parentNode->vop != NULL && parentNode->vop->Create != NULL)
     {
@@ -165,6 +165,7 @@ int fp_open(char *fullpath, int oflags, mode_t mode)
   int accmode;
   struct file *filep = NULL;
   struct Vnode *vnode = NULL;
+  struct Vnode *parentVnode = NULL;
 
   VnodeHold();
   ret = VnodeLookup(fullpath, &vnode, 0);
@@ -174,7 +175,8 @@ int fp_open(char *fullpath, int oflags, mode_t mode)
       if (vnode->type == VNODE_TYPE_BCHR)
         {
           ret = -EINVAL;
-          goto errout_without_count;
+          VnodeDrop();
+          goto errout;
         }
 #ifdef LOSCFG_FS_VFS_BLOCK_DEVICE
       if (vnode->type == VNODE_TYPE_BLK) {
@@ -183,7 +185,7 @@ int fp_open(char *fullpath, int oflags, mode_t mode)
           if (fd < 0)
             {
               ret = fd;
-              goto errout_without_count;
+              goto errout;
             }
          return fd;
       }
@@ -192,39 +194,38 @@ int fp_open(char *fullpath, int oflags, mode_t mode)
         {
           ret = -EEXIST;
           VnodeDrop();
-          goto errout_without_count;
+          goto errout;
         }
       if (vnode->type == VNODE_TYPE_DIR)
         {
           ret = -EISDIR;
           VnodeDrop();
-          goto errout_without_count;
+          goto errout;
         }
       accmode = oflag_convert_mode(oflags);
       if (VfsVnodePermissionCheck(vnode, accmode))
         {
           ret = -EACCES;
           VnodeDrop();
-          goto errout_without_count;
+          goto errout;
         }
     }
 
   if ((ret != OK) && (oflags & O_CREAT) && vnode)
     {
-      vnode->useCount++;
       /* if file not exist, but parent dir of the file is exist */
       if (VfsVnodePermissionCheck(vnode, (WRITE_OP | EXEC_OP)))
         {
           ret = -EACCES;
-          vnode->useCount--;
           VnodeDrop();
-          goto errout_without_count;
+          goto errout;
         }
-      ret = do_creat(&vnode, fullpath, mode);
+      parentVnode = vnode;
+      ret = do_creat(parentVnode, fullpath, mode, &vnode);
       if (ret != OK)
         {
           VnodeDrop();
-          goto errout_without_count;
+          goto errout;
         }
     }
 
@@ -232,7 +233,7 @@ int fp_open(char *fullpath, int oflags, mode_t mode)
     {
       /* found nothing */
       VnodeDrop();
-      goto errout_without_count;
+      goto errout;
     }
   vnode->useCount++;
   VnodeDrop();
@@ -242,7 +243,7 @@ int fp_open(char *fullpath, int oflags, mode_t mode)
       if (vnode->useCount > 1)
         {
           ret = -EBUSY;
-          goto errout;
+          goto errout_with_count;
         }
 
       if (vnode->vop->Truncate)
@@ -250,13 +251,13 @@ int fp_open(char *fullpath, int oflags, mode_t mode)
           ret = vnode->vop->Truncate(vnode, 0);
           if (ret != OK)
             {
-              goto errout;
+              goto errout_with_count;
             }
         }
       else
         {
           ret = -ENOSYS;
-          goto errout;
+          goto errout_with_count;
         }
     }
 
@@ -264,7 +265,7 @@ int fp_open(char *fullpath, int oflags, mode_t mode)
   if (fd < 0)
     {
       ret = -EMFILE;
-      goto errout;
+      goto errout_with_count;
     }
 
   /* Get the file structure corresponding to the file descriptor. */
@@ -273,7 +274,7 @@ int fp_open(char *fullpath, int oflags, mode_t mode)
     {
       files_release(fd);
       ret = -get_errno();
-      goto errout;
+      goto errout_with_count;
     }
 
   filep->f_vnode = vnode;
@@ -288,7 +289,7 @@ int fp_open(char *fullpath, int oflags, mode_t mode)
   if (ret < 0)
     {
       files_release(fd);
-      goto errout;
+      goto errout_with_count;
     }
 
   /* we do not bother to handle the NULL scenario, if so, page-cache feature will not be used
@@ -299,11 +300,11 @@ int fp_open(char *fullpath, int oflags, mode_t mode)
 
   return fd;
 
-errout:
+errout_with_count:
   VnodeHold();
   vnode->useCount--;
   VnodeDrop();
-errout_without_count:
+errout:
   set_errno(-ret);
   return VFS_ERROR;
 }

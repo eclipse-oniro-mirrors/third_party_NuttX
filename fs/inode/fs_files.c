@@ -186,20 +186,18 @@ static int _files_close(struct file *filep)
         }
       VnodeHold();
       vnode->useCount--;
-      VnodeDrop();
-    }
-
-  /* Block char device is removed when close */
-  if (vnode->type == VNODE_TYPE_BCHR)
-    {
-      VnodeHold();
-      ret = VnodeFree(vnode);
-      if (ret < 0)
+      /* Block char device is removed when close */
+      if (vnode->type == VNODE_TYPE_BCHR)
         {
-          PRINTK("Removing bchar device %s failed\n", filep->f_path);
+          ret = VnodeFree(vnode);
+          if (ret < 0)
+            {
+              PRINTK("Removing bchar device %s failed\n", filep->f_path);
+            }
         }
       VnodeDrop();
     }
+
   /* Release the path of file */
 
   free(filep->f_path);

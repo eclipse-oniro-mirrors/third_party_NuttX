@@ -38,9 +38,7 @@
  ****************************************************************************/
 
 #include "vfs_config.h"
-
 #include "fs/fs.h"
-
 #include "fs/vnode.h"
 #include "string.h"
 #include "errno.h"
@@ -59,6 +57,26 @@
 
 int unregister_driver(const char *path)
 {
-  (void)path;
-  return 0;
+  struct Vnode *vnode = NULL;
+  int ret;
+  if (path == NULL)
+    {
+      return -EINVAL;
+    }
+  VnodeHold();
+  ret = VnodeLookup(path, &vnode, V_CACHE | V_DUMMY);
+  if (ret != OK)
+    {
+      VnodeDrop();
+      return ret;
+    }
+  if (vnode->type != VNODE_TYPE_CHR && vnode->type != VNODE_TYPE_BLK)
+    {
+      VnodeDrop();
+      return -EPERM;
+    }
+  ret = VnodeDestory(vnode);
+  VnodeDrop();
+
+  return ret;
 }

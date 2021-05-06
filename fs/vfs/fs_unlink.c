@@ -127,6 +127,9 @@ int do_unlink(int dirfd, const char *pathname)
   else if (vnode && vnode->fop && vnode->fop->unlink)
     {
       ret = vnode->fop->unlink(vnode);
+      if (ret == OK) {
+        goto done;
+      }
     }
   else
     {
@@ -139,6 +142,8 @@ int do_unlink(int dirfd, const char *pathname)
     }
 
   VnodeFree(vnode);
+
+done:
   VnodeDrop();
 #ifdef LOSCFG_KERNEL_VM
   (void)remove_mapping(fullpath);

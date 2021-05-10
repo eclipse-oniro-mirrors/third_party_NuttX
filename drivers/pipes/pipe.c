@@ -36,20 +36,18 @@
 /****************************************************************************
  * Included Files
  ****************************************************************************/
-#include <sys/types.h>
-
-#include <stdio.h>
-#include <unistd.h>
-#include <semaphore.h>
-#include <fcntl.h>
-#include <errno.h>
-#include <assert.h>
-
-#include <fs/fs.h>
-
-#include "fs/vnode.h"
 #include "pipe_common.h"
-#include "stdio.h"
+#include <assert.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <semaphore.h>
+#include <stdio.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include "fs/fs.h"
+#include "fs/vnode.h"
+#include "los_init.h"
+
 #if CONFIG_DEV_PIPE_SIZE > 0
 
 /****************************************************************************
@@ -342,9 +340,11 @@ int pipe_init()
 {
     int ret = sem_init(&g_pipesem, 0, 1);
     if (ret != 0) {
-        dprintf(" pipe_init failed!\n");
+        dprintf("pipe_init failed!\n");
     }
     return ret;
 }
+
+LOS_MODULE_INIT(pipe_init, LOS_INIT_LEVEL_KMOD_EXTENDED);
 
 #endif /* CONFIG_DEV_PIPE_SIZE > 0 */

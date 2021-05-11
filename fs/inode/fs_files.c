@@ -504,7 +504,7 @@ int files_allocate(struct Vnode *vnode_ptr, int oflags, off_t pos, void *priv, i
   return VFS_ERROR;
 }
 
-static int files_close_internal(int fd, LosProcessCB *processCB)
+int files_close_internal(int fd, LosProcessCB *processCB)
 {
   int ret = OK;
   struct filelist *list = NULL;

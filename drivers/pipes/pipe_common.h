@@ -39,6 +39,8 @@
 /****************************************************************************
  * Included Files
  ****************************************************************************/
+#include "fs/fs.h"
+#include "fs/vnode.h"
 #include <sys/types.h>
 #include <limits.h>
 #include <stdint.h>

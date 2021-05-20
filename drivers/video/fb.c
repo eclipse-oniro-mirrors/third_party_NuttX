@@ -113,8 +113,10 @@ static ssize_t fb_mmap(struct file *filep, LosVmMapRegion *region)
   int ret = -EINVAL;
   struct fb_chardev_s *fb;
   struct fb_vtable_s *vtable;
+  struct drv_data *drvData;
 
-  fb = (struct fb_chardev_s *)((struct drv_data *)filep->f_vnode->data)->priv;
+  drvData = (struct drv_data *)filep->f_vnode->data;
+  fb = (struct fb_chardev_s *)drvData->priv;
   if (fb == NULL)
     {
       return -ENODEV;
@@ -148,8 +150,10 @@ static int fb_open(struct file *filep)
   struct fb_chardev_s *fb;
   struct fb_vtable_s *vtable;
   int ret = -EINVAL;
+  struct drv_data *drvData;
 
-  fb = (struct fb_chardev_s *)((struct drv_data *)filep->f_vnode->data)->priv;
+  drvData = (struct drv_data *)filep->f_vnode->data;
+  fb = (struct fb_chardev_s *)drvData->priv;
   if (fb == NULL)
     {
       return -ENODEV;
@@ -183,8 +187,10 @@ static int fb_close(struct file *filep)
   struct fb_chardev_s *fb;
   struct fb_vtable_s *vtable;
   int ret = -EINVAL;
+  struct drv_data *drvData;
 
-  fb = (struct fb_chardev_s *)((struct drv_data *)filep->f_vnode->data)->priv;
+  drvData = (struct drv_data *)filep->f_vnode->data;
+  fb = (struct fb_chardev_s *)drvData->priv;
   if (fb == NULL)
     {
       return -ENODEV;
@@ -215,11 +221,13 @@ static ssize_t fb_read(struct file *filep, char *buffer, size_t len)
   size_t end;
   size_t size;
   int ret;
+  struct drv_data *drvData;
 
   /* Get the framebuffer instance */
 
   DEBUGASSERT(filep != NULL && filep->f_vnode != NULL);
-  fb = (struct fb_chardev_s *)((struct drv_data *)filep->f_vnode->data)->priv;
+  drvData = (struct drv_data *)filep->f_vnode->data;
+  fb = (struct fb_chardev_s *)drvData->priv;
   /* Get the start and size of the transfer */
 
   start = filep->f_pos;
@@ -259,11 +267,14 @@ static ssize_t fb_write(struct file *filep, const char *buffer,
   size_t end;
   size_t size;
   int ret;
+  struct drv_data *drvData;
+
 
   /* Get the framebuffer instance */
 
   DEBUGASSERT(filep != NULL && filep->f_vnode != NULL);
-  fb = (struct fb_chardev_s *)((struct drv_data *)filep->f_vnode->data)->priv;
+  drvData = (struct drv_data *)filep->f_vnode->data;
+  fb = (struct fb_chardev_s *)drvData->priv;
   /* Get the start and size of the transfer */
 
   start = filep->f_pos;
@@ -306,11 +317,13 @@ static off_t fb_seek(struct file *filep, off_t offset, int whence)
   struct fb_chardev_s *fb = NULL;
   off_t newpos;
   int ret;
+  struct drv_data *drvData;
 
   /* Get the framebuffer instance */
 
   DEBUGASSERT(filep != NULL && filep->f_vnode != NULL);
-  fb = (struct fb_chardev_s *)((struct drv_data *)filep->f_vnode->data)->priv;
+  drvData = (struct drv_data *)filep->f_vnode->data;
+  fb = (struct fb_chardev_s *)drvData->priv;
   /* Determine the new, requested file position */
 
   switch (whence)
@@ -371,11 +384,13 @@ static int fb_ioctl(struct file *filep, int cmd, unsigned long arg)
 {
   struct fb_chardev_s *fb = NULL;
   int ret;
+  struct drv_data *drvData;
 
   /* Get the framebuffer instance */
 
   DEBUGASSERT(filep != NULL && filep->f_vnode != NULL);
-  fb = (struct fb_chardev_s *)((struct drv_data *)filep->f_vnode->data)->priv;
+  drvData = (struct drv_data *)filep->f_vnode->data;
+  fb = (struct fb_chardev_s *)drvData->priv;
   /* Process the IOCTL command */
 
   switch (cmd)

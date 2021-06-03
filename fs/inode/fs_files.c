@@ -363,17 +363,11 @@ int file_dup2(struct file *filep1, struct file *filep2)
   /* Call the open method on the file, driver, mountpoint so that it
    * can maintain the correct open counts.
    */
-
   if (vnode_ptr->vop)
     {
-      if (vnode_ptr->originMount)
+      if (vnode_ptr->flag & VNODE_FLAG_MOUNT_NEW)
         {
-          /* Dup the open file on the in the new file structure */
-
-          if (vnode_ptr == NULL)
-            {
-              ret = -ENOSYS;
-            }
+            ret = -ENOSYS;
         }
       else
         {
@@ -728,6 +722,7 @@ static void copy_fds(const struct fd_table_s *new_fdt, const struct fd_table_s *
       (void)memcpy_s(new_fdt->ft_fds, sz, old_fdt->ft_fds, sz);
     }
   (void)memcpy_s(new_fdt->proc_fds, sizeof(fd_set), old_fdt->proc_fds, sizeof(fd_set));
+  (void)memcpy_s(new_fdt->cloexec_fds, sizeof(fd_set), old_fdt->cloexec_fds, sizeof(fd_set));
 }
 
 static void copy_fd_table(struct fd_table_s *new_fdt, struct fd_table_s *old_fdt)
@@ -774,6 +769,7 @@ static struct fd_table_s * alloc_fd_table(unsigned int numbers)
     {
       fdt->ft_fds = NULL;
       fdt->proc_fds = NULL;
+      fdt->cloexec_fds = NULL;
       return fdt;
     }
   data = LOS_MemAlloc(m_aucSysMem0, numbers * sizeof(struct file_table_s));
@@ -788,13 +784,14 @@ static struct fd_table_s * alloc_fd_table(unsigned int numbers)
         fdt->ft_fds[i].sysFd = -1;
     }
 
-  data = LOS_MemAlloc(m_aucSysMem0, sizeof(fd_set));
+  data = LOS_MemAlloc(m_aucSysMem0, 2 * sizeof(fd_set)); /* 2: proc_fds, cloexec_fds */
   if (!data)
     {
       goto out_arr;
     }
-  (VOID)memset_s(data, sizeof(fd_set), 0, sizeof(fd_set));
-  fdt->proc_fds = data;
+  (VOID)memset_s(data, 2 * sizeof(fd_set), 0, 2 * sizeof(fd_set));
+  fdt->proc_fds = (fd_set *)data;
+  fdt->cloexec_fds = (fd_set *)((uintptr_t)data + sizeof(fd_set));
 
   alloc_std_fd(fdt);
 
@@ -878,15 +875,13 @@ struct files_struct *dup_fd(struct files_struct *old_files)
  * Name: delete_files
  *
  * Description:
- *   Close a processCB's files specified by processCB and files
- *
- * Assumuptions:
- *   processCB->files may != files and processCB may != current processCB.
+ *   Close a current process's fd specified by struct files.
+ *   And delete files struct.
  *
  ****************************************************************************/
-void delete_files(LosProcessCB *processCB, struct files_struct *files)
+void delete_files(struct files_struct *files)
 {
-  if (files == NULL || processCB == NULL)
+  if (files == NULL)
     {
       return;
     }

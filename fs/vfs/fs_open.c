@@ -158,7 +158,7 @@ static int do_creat(struct Vnode *parentNode, char *fullpath, mode_t mode, struc
   return OK;
 }
 
-int fp_open(char *fullpath, int oflags, mode_t mode)
+int fp_open(int dirfd, const char *path, int oflags, mode_t mode)
 {
   int ret;
   int fd;
@@ -166,9 +166,10 @@ int fp_open(char *fullpath, int oflags, mode_t mode)
   struct file *filep = NULL;
   struct Vnode *vnode = NULL;
   struct Vnode *parentVnode = NULL;
+  char *fullpath = NULL;
 
   VnodeHold();
-  ret = VnodeLookup(fullpath, &vnode, 0);
+  ret = follow_symlink(dirfd, path, &vnode, &fullpath);
   if (ret == OK)
     {
       /* if file exist */
@@ -305,6 +306,10 @@ errout_with_count:
   vnode->useCount--;
   VnodeDrop();
 errout:
+  if (fullpath)
+    {
+      free(fullpath);
+    }
   set_errno(-ret);
   return VFS_ERROR;
 }
@@ -313,25 +318,6 @@ int do_open(int dirfd, const char *path, int oflags, mode_t mode)
 {
   int ret;
   int fd;
-  char *fullpath          = NULL;
-  char *relativepath     = NULL;
-
-  /* Get relative path by dirfd*/
-  ret = get_path_from_fd(dirfd, &relativepath);
-  if (ret < 0)
-    {
-      goto errout;
-    }
-
-  ret = vfs_normalize_path((const char *)relativepath, path, &fullpath);
-  if (relativepath)
-    {
-      free(relativepath);
-    }
-  if (ret < 0)
-    {
-      goto errout;
-    }
 
   if ((oflags & (O_WRONLY | O_CREAT)) != 0)
     {
@@ -339,7 +325,7 @@ int do_open(int dirfd, const char *path, int oflags, mode_t mode)
       mode &= (S_IRWXU | S_IRWXG | S_IRWXO);
     }
 
-  fd = fp_open(fullpath, oflags, mode);
+  fd = fp_open(dirfd, path, oflags, mode);
   if (fd < 0)
     {
       ret = -get_errno();
@@ -349,10 +335,6 @@ int do_open(int dirfd, const char *path, int oflags, mode_t mode)
   return fd;
 
 errout:
-  if (fullpath)
-    {
-      free(fullpath);
-    }
   set_errno(-ret);
   return VFS_ERROR;
 }

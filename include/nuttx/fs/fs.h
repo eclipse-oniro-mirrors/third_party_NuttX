@@ -1110,6 +1110,7 @@ void weak_function files_initialize(void);
 
 int vfs_normalize_path(const char *directory, const char *filename, char **pathname);
 int vfs_normalize_pathat(int fd, const char *filename, char **pathname);
+int follow_symlink(int dirfd, const char *path, struct Vnode **vnode, char **fullpath);
 
 #ifdef __cplusplus
 #if __cplusplus

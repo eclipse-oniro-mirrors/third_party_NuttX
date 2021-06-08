@@ -2158,7 +2158,7 @@ errout_with_mutex:
   return -error;
 }
 
-int vfs_nfs_unlink(struct Vnode *parent, struct Vnode *target, char *filename)
+int vfs_nfs_unlink(struct Vnode *parent, struct Vnode *target, const char *filename)
 {
   struct nfsmount *nmp = (struct nfsmount *)(parent->originMount->data);
   struct nfsnode  *parent_node = NULL;
@@ -2222,7 +2222,7 @@ errout_with_mutex:
   return -error;
 }
 
-int vfs_nfs_rmdir(struct Vnode *parent, struct Vnode *target, char *dirname)
+int vfs_nfs_rmdir(struct Vnode *parent, struct Vnode *target, const char *dirname)
 {
   struct nfsmount *nmp = (struct nfsmount *)(parent->originMount->data);
   struct nfsnode  *parent_node = NULL;

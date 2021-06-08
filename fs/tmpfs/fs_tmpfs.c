@@ -140,8 +140,8 @@ int tmpfs_readdir(struct Vnode *vp, struct fs_dirent_s *dir);
 int tmpfs_rename(struct Vnode *oldVnode, struct Vnode *newParent, const char *oldname, const char *newname);
 int tmpfs_mkdir(struct Vnode *parent, const char *relpath, mode_t mode, struct Vnode **vpp);
 int tmpfs_create(struct Vnode *dvp, const char *path, int mode, struct Vnode **vpp);
-int tmpfs_unlink(struct Vnode *parent, struct Vnode *node, char *relpath);
-int tmpfs_rmdir(struct Vnode *parent, struct Vnode *target, char *dirname);
+int tmpfs_unlink(struct Vnode *parent, struct Vnode *node, const char *relpath);
+int tmpfs_rmdir(struct Vnode *parent, struct Vnode *target, const char *dirname);
 int tmpfs_reclaim(struct Vnode *vp);
 
 int tmpfs_statfs(struct Mount *mp, struct statfs *sbp);
@@ -1854,7 +1854,7 @@ int tmpfs_statfs(struct Mount *mp, struct statfs *sbp)
  * Name: tmpfs_unlink
  ****************************************************************************/
 
-int tmpfs_unlink(struct Vnode *parent, struct Vnode *node, char *relpath)
+int tmpfs_unlink(struct Vnode *parent, struct Vnode *node, const char *relpath)
 {
   FAR struct tmpfs_s *fs;
   FAR struct tmpfs_directory_s *parent_dir;
@@ -2041,7 +2041,7 @@ errout_with_lock:
  * Name: tmpfs_rmdir
  ****************************************************************************/
 
-int tmpfs_rmdir(struct Vnode *parent, struct Vnode *target, char *dirname)
+int tmpfs_rmdir(struct Vnode *parent, struct Vnode *target, const char *dirname)
 {
   FAR struct tmpfs_s *fs;
   FAR struct tmpfs_directory_s *parent_dir;

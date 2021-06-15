@@ -46,7 +46,7 @@
 #include "sys/types.h"
 #include "stdint.h"
 #include "dirent.h"
-#include "fs/fs.h"
+#include "vnode.h"
 
 #ifdef __cplusplus
 #if __cplusplus
@@ -243,9 +243,7 @@ struct fs_dirent_s
 
   /* At present, only mountpoints require special handling flags */
 
-#ifndef CONFIG_DISABLE_MOUNTPOINT
   unsigned int fd_flags;
-#endif
 
   /* This keeps track of the current directory position for telldir */
 

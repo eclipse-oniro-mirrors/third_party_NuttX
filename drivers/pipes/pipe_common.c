@@ -49,24 +49,19 @@
 #include <semaphore.h>
 #include <fcntl.h>
 #include <errno.h>
-#include <debug.h>
 #include <poll.h>
 #include "linux/wait.h"
-#include "fs/fs.h"
-#include "fs_poll_pri.h"
 #include <assert.h>
 
 #ifdef CONFIG_DEBUG_FEATURES
 #  include <nuttx/arch.h>
 #endif
 #include <semaphore.h>
-#include <fs/fs.h>
+#include <fs/driver.h>
 #include "pipe_common.h"
 #include "los_printf.h"
 #include "user_copy.h"
 #ifdef LOSCFG_KERNEL_PIPE
-
-#include "fs/vnode.h"
 
 /****************************************************************************
  * Pre-processor Definitions

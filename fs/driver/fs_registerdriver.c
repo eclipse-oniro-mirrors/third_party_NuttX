@@ -40,11 +40,10 @@
 #include "vfs_config.h"
 #include "sys/types.h"
 #include "errno.h"
-#include "fs/fs.h"
-#include "fs/vnode.h"
+#include "fs/driver.h"
+#include "vnode.h"
 #include "string.h"
-#include "fs/vfs_util.h"
-#include "fs/path_cache.h"
+#include "path_cache.h"
 #include "limits.h"
 
 /****************************************************************************
@@ -103,7 +102,7 @@ int register_driver(const char *path, const struct file_operations_vfs *fops,
   data->mode = mode;
   data->priv = priv;
 
-  ret = VnodeLookup(path, &vnode, V_CREATE | V_CACHE | V_DUMMY);
+  ret = VnodeLookup(path, &vnode, V_CREATE | V_DUMMY);
   if (ret == OK)
     {
       /* We have it, now populate it with driver specific information.

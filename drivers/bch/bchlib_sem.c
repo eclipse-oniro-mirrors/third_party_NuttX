@@ -38,7 +38,6 @@
  ****************************************************************************/
 #include <errno.h>
 #include <assert.h>
-#include <debug.h>
 #include <semaphore.h>
 #include "bch.h"
 
@@ -50,7 +49,7 @@
  * Name: bch_semtake
  ****************************************************************************/
 
-void bchlib_semtake(FAR struct bchlib_s *bch)
+void bchlib_semtake(struct bchlib_s *bch)
 {
   while (sem_wait(&bch->sem) != 0)
     {

@@ -43,7 +43,6 @@
 #include "unistd.h"
 #include "errno.h"
 
-#include "fs/fs.h"
 #include "fs/file.h"
 
 /****************************************************************************
@@ -60,7 +59,7 @@
  *
  ****************************************************************************/
 
-ssize_t file_pread(FAR struct file *filep, FAR void *buf, size_t nbytes,
+ssize_t file_pread(struct file *filep, void *buf, size_t nbytes,
                    off_t offset)
 {
   off_t savepos;
@@ -141,9 +140,9 @@ ssize_t file_pread(FAR struct file *filep, FAR void *buf, size_t nbytes,
  *
  ****************************************************************************/
 
-ssize_t pread(int fd, FAR void *buf, size_t nbytes, off_t offset)
+ssize_t pread(int fd, void *buf, size_t nbytes, off_t offset)
 {
-  FAR struct file *filep;
+  struct file *filep;
 
   /* Get the file structure corresponding to the file descriptor. */
 

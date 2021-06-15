@@ -42,12 +42,10 @@
  ****************************************************************************/
 
 #include "vfs_config.h"
-#include "compiler.h"
 
 #include "sys/types.h"
 #include "stdarg.h"
 #include "stdint.h"
-#include "fs/fs.h"
 
 #include "semaphore.h"
 
@@ -65,12 +63,10 @@ extern "C" {
  * pseudo-file system.
  */
 
-#ifndef CONFIG_DISABLE_MOUNTPOINT
 struct statfs;                    /* Forward reference */
 typedef int (*foreach_mountpoint_t)(const char *mountpoint,
                                     struct statfs *statbuf,
                                     void *arg);
-#endif
 
 struct filelist *sched_getfiles(void);
 
@@ -111,34 +107,6 @@ ssize_t sendfile(int outfd, int infd, off_t *offset, size_t count);
 
 extern int get_path_from_fd(int fd, char **path);
 bool get_bit(int i);
-
-/****************************************************************************
- * Name: foreach_mountpoint
- *
- * Description:
- *   Visit each mountpoint in the pseudo-file system.  The traversal is
- *   terminated when the callback 'handler' returns a non-zero value, or when
- *   all of the mountpoints have been visited.
- *
- *   This is just a front end "filter" to foreach_vnode() that forwards only
- *   mountpoint vnodes.  It is intended to support the mount() command to
- *   when the mount command is used to enumerate mounts.
- *
- *   NOTE 1: Use with caution... The pseudo-file system is locked throughout
- *   the traversal.
- *   NOTE 2: The search algorithm is recursive and could, in principle, use
- *   an indeterminant amount of stack space.  This will not usually be a
- *   real work issue.
- *
- * Input Parameters:
- *   handler - Operation function when find a mount point.
- *   arg - Private data.
- *
- ****************************************************************************/
-
-#ifndef CONFIG_DISABLE_MOUNTPOINT
-int foreach_mountpoint(foreach_mountpoint_t handler, void *arg);
-#endif
 
 #ifdef __cplusplus
 #if __cplusplus

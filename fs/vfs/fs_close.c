@@ -42,13 +42,13 @@
 #include "errno.h"
 #include "unistd.h"
 #include "sched.h"
-#include "fs/fs.h"
 
 #if  defined(LOSCFG_NET_LWIP_SACK)
-# include "net/net.h"
+#include "lwip/sockets.h"
 #endif
 
 #include "mqueue.h"
+#include "fs/file.h"
 
 /****************************************************************************
  * Public Functions

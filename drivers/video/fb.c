@@ -42,7 +42,7 @@
 #include "stdlib.h"
 #include "string.h"
 #include "fb.h"
-#include "fs/fs.h"
+#include "fs/driver.h"
 #include "assert.h"
 #include "errno.h"
 #include "user_copy.h"

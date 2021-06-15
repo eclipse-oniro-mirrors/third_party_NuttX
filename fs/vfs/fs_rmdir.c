@@ -41,12 +41,10 @@
 
 #include "unistd.h"
 #include "errno.h"
-#include "fs/fs.h"
 #include "stdlib.h"
-#include "fs/vnode.h"
+#include "vnode.h"
 #include "sys/stat.h"
 #include "string.h"
-#include "fs_other.h"
 #include "limits.h"
 
 /****************************************************************************

@@ -39,8 +39,6 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <assert.h>
-#include <debug.h>
-#include "fs/fs.h"
 #include "bch.h"
 
 /****************************************************************************

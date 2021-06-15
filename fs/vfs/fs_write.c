@@ -48,7 +48,7 @@
 #include "sys/socket.h"
 #include "console.h"
 #include "user_copy.h"
-#include "fs/vnode.h"
+#include "vnode.h"
 
 /****************************************************************************
  * Public Functions

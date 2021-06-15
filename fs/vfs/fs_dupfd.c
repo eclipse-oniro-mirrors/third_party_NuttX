@@ -44,10 +44,9 @@
 #include "errno.h"
 #include "sched.h"
 
-#include "fs/fs.h"
 #include "fs/file.h"
 
-#include "fs/vnode.h"
+#include "vnode.h"
 #include "stdlib.h"
 #include "string.h"
 #if CONFIG_NFILE_DESCRIPTORS > 0

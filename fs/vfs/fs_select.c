@@ -46,10 +46,8 @@
 #include "poll.h"
 #include "assert.h"
 #include "errno.h"
-#include "debug.h"
 
 #include "stdlib.h"
-#include "fs/fs.h"
 
 #include "los_signal.h"
 #include "los_syscall.h"

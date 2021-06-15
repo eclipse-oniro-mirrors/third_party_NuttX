@@ -40,16 +40,12 @@
 #include "vfs_config.h"
 #include "sys/types.h"
 #include "errno.h"
-#include "fs/fs.h"
-#include "fs/vnode.h"
+#include "fs/driver.h"
+#include "vnode.h"
 #include "string.h"
-#include "fs/vfs_util.h"
-#include "fs/path_cache.h"
-#include "fs/vnode.h"
+#include "path_cache.h"
+#include "vnode.h"
 #include "limits.h"
-
-
-#ifndef CONFIG_DISABLE_MOUNTPOINT
 
 /****************************************************************************
  * Public Functions
@@ -103,7 +99,7 @@ int register_blockdriver(const char *path,
   data->priv = priv;
 
   VnodeHold();
-  ret = VnodeLookup(path, &vp, V_CREATE | V_CACHE | V_DUMMY);
+  ret = VnodeLookup(path, &vp, V_CREATE | V_DUMMY);
   if (ret == OK)
     {
       /* We have it, now populate it with block driver specific information. */
@@ -116,5 +112,3 @@ int register_blockdriver(const char *path,
   VnodeDrop();
   return ret;
 }
-
-#endif /* !CONFIG_DISABLE_MOUNTPOINT */

@@ -43,7 +43,6 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <assert.h>
-#include <debug.h>
 #include <securec.h>
 #include "bch.h"
 

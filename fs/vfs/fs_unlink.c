@@ -41,12 +41,10 @@
 
 #include "unistd.h"
 #include "errno.h"
-#include "fs/fs.h"
 #include "fcntl.h"
 
-#include "fs/vnode.h"
+#include "vnode.h"
 #include "stdlib.h"
-#include "fs_other.h"
 
 /****************************************************************************
  * Private Functions

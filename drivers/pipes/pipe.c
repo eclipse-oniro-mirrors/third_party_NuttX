@@ -44,8 +44,7 @@
 #include <stdio.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include "fs/fs.h"
-#include "fs/vnode.h"
+#include "fs/driver.h"
 #include "los_init.h"
 
 #if CONFIG_DEV_PIPE_SIZE > 0

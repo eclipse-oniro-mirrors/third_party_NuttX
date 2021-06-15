@@ -46,7 +46,6 @@
 #include <unistd.h>
 #include <errno.h>
 
-#include <fs/fs.h>
 
 #ifndef CONFIG_LIB_SENDFILE_BUFSIZE
 #  define CONFIG_LIB_SENDFILE_BUFSIZE 512
@@ -103,8 +102,8 @@
 
 ssize_t sendfile(int outfd, int infd, off_t *offset, size_t count)
 {
-  FAR uint8_t *iobuffer;
-  FAR uint8_t *wrbuffer;
+  uint8_t *iobuffer;
+  uint8_t *wrbuffer;
   off_t startpos = 0;
   ssize_t nbytesread;
   ssize_t nbyteswritten;
@@ -133,7 +132,7 @@ ssize_t sendfile(int outfd, int infd, off_t *offset, size_t count)
 
   /* Allocate an I/O buffer */
 
-  iobuffer = (FAR void *)malloc(CONFIG_LIB_SENDFILE_BUFSIZE);
+  iobuffer = (void *)malloc(CONFIG_LIB_SENDFILE_BUFSIZE);
   if (!iobuffer)
     {
       set_errno(ENOMEM);

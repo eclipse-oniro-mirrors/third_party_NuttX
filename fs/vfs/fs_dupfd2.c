@@ -44,7 +44,7 @@
 #include "unistd.h"
 #include "sched.h"
 
-#include "fs/vnode.h"
+#include "vnode.h"
 
 #if CONFIG_NFILE_DESCRIPTORS > 0
 

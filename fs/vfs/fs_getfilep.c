@@ -42,7 +42,7 @@
 #include "console.h"
 #include "sched.h"
 #include "sys/types.h"
-#include "fs/vnode.h"
+#include "vnode.h"
 #include "vfs_config.h"
 
 /****************************************************************************

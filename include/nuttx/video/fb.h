@@ -42,7 +42,6 @@
  ****************************************************************************/
 
 #include "los_config.h"
-#include "compiler.h"
 #include "los_vm_map.h"
 
 #define CONFIG_FB_CMAP
@@ -325,7 +324,7 @@ struct fb_videoinfo_s
 
 struct fb_planeinfo_s
 {
-  FAR void  *fbmem;       /* Start of frame buffer memory */
+  void  *fbmem;       /* Start of frame buffer memory */
   size_t     fblen;       /* Length of frame buffer memory in bytes */
   fb_coord_t stride;      /* Length of a line in bytes */
   uint8_t    display;     /* Display number */
@@ -355,8 +354,8 @@ struct fb_area_s
 
 struct fb_overlayinfo_s
 {
-  FAR void   *fbmem;          /* Start of frame buffer virtual memory */
-  FAR void   *memphys;        /* Start of frame buffer physical memory */
+  void   *fbmem;          /* Start of frame buffer virtual memory */
+  void   *memphys;        /* Start of frame buffer physical memory */
   size_t     fblen;           /* Length of frame buffer memory in bytes */
   fb_coord_t stride;          /* Length of a line in bytes */
   uint8_t    overlay;         /* Overlay number */
@@ -491,20 +490,20 @@ struct fb_vtable_s
    * configuration of each color plane.
    */
 
-  int (*getvideoinfo)(FAR struct fb_vtable_s *vtable,
-                      FAR struct fb_videoinfo_s *vinfo);
-  int (*getplaneinfo)(FAR struct fb_vtable_s *vtable, int planeno,
-                      FAR struct fb_planeinfo_s *pinfo);
+  int (*getvideoinfo)(struct fb_vtable_s *vtable,
+                      struct fb_videoinfo_s *vinfo);
+  int (*getplaneinfo)(struct fb_vtable_s *vtable, int planeno,
+                      struct fb_planeinfo_s *pinfo);
 
 #ifdef CONFIG_FB_CMAP
   /* The following are provided only if the video hardware supports RGB
    * color mapping
    */
 
-  int (*getcmap)(FAR struct fb_vtable_s *vtable,
-                 FAR struct fb_cmap_s *cmap);
-  int (*putcmap)(FAR struct fb_vtable_s *vtable,
-                 FAR const struct fb_cmap_s *cmap);
+  int (*getcmap)(struct fb_vtable_s *vtable,
+                 struct fb_cmap_s *cmap);
+  int (*putcmap)(struct fb_vtable_s *vtable,
+                 const struct fb_cmap_s *cmap);
 #endif
 
 #ifdef CONFIG_FB_HWCURSOR
@@ -512,10 +511,10 @@ struct fb_vtable_s
    * hardware cursor.
    */
 
-  int (*getcursor)(FAR struct fb_vtable_s *vtable,
-                   FAR struct fb_cursorattrib_s *attrib);
-  int (*setcursor)(FAR struct fb_vtable_s *vtable,
-                   FAR struct fb_setcursor_s *settings);
+  int (*getcursor)(struct fb_vtable_s *vtable,
+                   struct fb_cursorattrib_s *attrib);
+  int (*setcursor)(struct fb_vtable_s *vtable,
+                   struct fb_setcursor_s *settings);
 #endif
 
 #ifdef CONFIG_FB_SYNC
@@ -523,7 +522,7 @@ struct fb_vtable_s
    * vertical snyc.
    */
 
-  int (*waitforvsync)(FAR struct fb_vtable_s *vtable);
+  int (*waitforvsync)(struct fb_vtable_s *vtable);
 #endif
 
 #ifdef CONFIG_FB_OVERLAY
@@ -531,56 +530,56 @@ struct fb_vtable_s
    * configuration of each overlay.
    */
 
-  int (*getoverlayinfo)(FAR struct fb_vtable_s *vtable, int overlayno,
-                        FAR struct fb_overlayinfo_s *oinfo);
+  int (*getoverlayinfo)(struct fb_vtable_s *vtable, int overlayno,
+                        struct fb_overlayinfo_s *oinfo);
 
   /* The following are provided only if the video hardware supports
    * transparency
    */
 
-  int (*settransp)(FAR struct fb_vtable_s *vtable,
-                   FAR const struct fb_overlayinfo_s *oinfo);
+  int (*settransp)(struct fb_vtable_s *vtable,
+                   const struct fb_overlayinfo_s *oinfo);
 
   /* The following are provided only if the video hardware supports
    * chromakey
    */
 
-  int (*setchromakey)(FAR struct fb_vtable_s *vtable,
-                      FAR const struct fb_overlayinfo_s *oinfo);
+  int (*setchromakey)(struct fb_vtable_s *vtable,
+                      const struct fb_overlayinfo_s *oinfo);
 
   /* The following are provided only if the video hardware supports
    * filling the overlay with a color.
    */
 
-  int (*setcolor)(FAR struct fb_vtable_s *vtable,
-                  FAR const struct fb_overlayinfo_s *oinfo);
+  int (*setcolor)(struct fb_vtable_s *vtable,
+                  const struct fb_overlayinfo_s *oinfo);
 
   /* The following allows to switch the overlay on or off */
 
-  int (*setblank)(FAR struct fb_vtable_s *vtable,
-                  FAR const struct fb_overlayinfo_s *oinfo);
+  int (*setblank)(struct fb_vtable_s *vtable,
+                  const struct fb_overlayinfo_s *oinfo);
 
   /* The following allows to set the active area for subsequently overlay
    * operations.
    */
 
-  int (*setarea)(FAR struct fb_vtable_s *vtable,
-                 FAR const struct fb_overlayinfo_s *oinfo);
+  int (*setarea)(struct fb_vtable_s *vtable,
+                 const struct fb_overlayinfo_s *oinfo);
 
 # ifdef CONFIG_FB_OVERLAY_BLIT
   /* The following are provided only if the video hardware supports
    * blit operation between overlays.
    */
 
-  int (*blit)(FAR struct fb_vtable_s *vtable,
-              FAR const struct fb_overlayblit_s *blit);
+  int (*blit)(struct fb_vtable_s *vtable,
+              const struct fb_overlayblit_s *blit);
 
   /* The following are provided only if the video hardware supports
    * blend operation between overlays.
    */
 
-  int (*blend)(FAR struct fb_vtable_s *vtable,
-               FAR const struct fb_overlayblend_s *blend);
+  int (*blend)(struct fb_vtable_s *vtable,
+               const struct fb_overlayblend_s *blend);
 # endif
 #endif
     int (*fb_open)(struct fb_vtable_s *vtable);
@@ -591,7 +590,7 @@ struct fb_vtable_s
     int (*fb_ioctl)(struct fb_vtable_s *vtable, int cmd, unsigned long arg);
     int (*fb_check_var)(struct fb_vtable_s *vtable, unsigned long arg);
     int (*fb_set_par)(struct fb_vtable_s *vtable);
-    ssize_t (*fb_mmap)(FAR struct fb_vtable_s *vtable, FAR LosVmMapRegion *region);
+    ssize_t (*fb_mmap)(struct fb_vtable_s *vtable, LosVmMapRegion *region);
 };
 
 /****************************************************************************
@@ -655,7 +654,7 @@ int up_fbinitialize(int display);
  *
  ****************************************************************************/
 
-FAR struct fb_vtable_s *up_fbgetvplane(int display, int vplane);
+struct fb_vtable_s *up_fbgetvplane(int display, int vplane);
 
 /****************************************************************************
  * Name: up_fbuninitialize

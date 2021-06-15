@@ -46,10 +46,10 @@
 #include "console.h"
 
 #if defined(LOSCFG_NET_LWIP_SACK)
-# include "net/net.h"
+#include "lwip/sockets.h"
 #endif
 
-#include "fs/vnode.h"
+#include "vnode.h"
 
 /****************************************************************************
  * Public Functions

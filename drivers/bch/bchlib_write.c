@@ -42,7 +42,6 @@
 #include <string.h>
 #include <errno.h>
 #include <assert.h>
-#include <debug.h>
 #include "bch.h"
 
 /****************************************************************************
@@ -58,9 +57,9 @@
  *
  ****************************************************************************/
 
-ssize_t bchlib_write(FAR void *handle, FAR const char *buffer, loff_t offset, size_t len)
+ssize_t bchlib_write(void *handle, const char *buffer, loff_t offset, size_t len)
 {
-  FAR struct bchlib_s *bch = (FAR struct bchlib_s *)handle;
+  struct bchlib_s *bch = (struct bchlib_s *)handle;
   size_t   nsectors;
   unsigned long long   sector;
   uint16_t sectoffset;
@@ -145,7 +144,7 @@ ssize_t bchlib_write(FAR void *handle, FAR const char *buffer, loff_t offset, si
 
       /* Write the contiguous sectors */
 
-      ret = los_disk_write(bch->disk->disk_id, (FAR const void *)buffer,
+      ret = los_disk_write(bch->disk->disk_id, (const void *)buffer,
                            sector + bch->sectstart, nsectors);
       if (ret < 0)
         {

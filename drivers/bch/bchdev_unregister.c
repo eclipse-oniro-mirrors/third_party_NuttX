@@ -43,9 +43,9 @@
 #include <sched.h>
 #include <errno.h>
 #include <assert.h>
-#include <debug.h>
 #include <sys/ioctl.h>
 #include "bch.h"
+#include "fs/driver.h"
 
 #define _err PRINTK
 
@@ -62,9 +62,9 @@
  *
  ****************************************************************************/
 
-int bchdev_unregister(FAR const char *chardev)
+int bchdev_unregister(const char *chardev)
 {
-  FAR struct bchlib_s *bch;
+  struct bchlib_s *bch;
   int fd;
   int ret;
 

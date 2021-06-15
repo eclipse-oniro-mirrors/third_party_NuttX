@@ -49,12 +49,9 @@
 #include "stdarg.h"
 #endif
 #include "stdlib.h"
-#include "fs/fs.h"
-#include "fs/vnode.h"
-#include "driver/blockproxy.h"
-#include "fs_other.h"
-#include "fs/vfs_util.h"
-#include "fs/path_cache.h"
+#include "vnode.h"
+#include "blockproxy.h"
+#include "path_cache.h"
 #include "unistd.h"
 
 /****************************************************************************

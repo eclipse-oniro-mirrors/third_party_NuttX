@@ -49,7 +49,6 @@
 #include "string.h"
 #include "inode/inode.h"
 #include "capability_api.h"
-#include "fs_other.h"
 
 /****************************************************************************
  * Private Functions

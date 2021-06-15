@@ -548,13 +548,13 @@ struct  rpcclnt
  ****************************************************************************/
 
 void rpcclnt_init(void);
-int  rpcclnt_connect(FAR struct rpcclnt *rpc);
-void rpcclnt_disconnect(FAR struct rpcclnt *rpc);
-int  rpcclnt_umount(FAR struct rpcclnt *rpc);
-void rpcclnt_safedisconnect(FAR struct rpcclnt *rpc);
-int  rpcclnt_request(FAR struct rpcclnt *rpc, int procnum, int prog, int version,
-                     FAR void *request, size_t reqlen,
-                     FAR void *response, size_t resplen);
+int  rpcclnt_connect(struct rpcclnt *rpc);
+void rpcclnt_disconnect(struct rpcclnt *rpc);
+int  rpcclnt_umount(struct rpcclnt *rpc);
+void rpcclnt_safedisconnect(struct rpcclnt *rpc);
+int  rpcclnt_request(struct rpcclnt *rpc, int procnum, int prog, int version,
+                     void *request, size_t reqlen,
+                     void *response, size_t resplen);
 void rpcclnt_setuidgid(uint32_t uid, uint32_t gid);
 
 #ifdef __cplusplus

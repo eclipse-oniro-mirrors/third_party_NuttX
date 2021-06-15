@@ -43,7 +43,6 @@
 #include "unistd.h"
 #include "errno.h"
 
-#include "fs/fs.h"
 #include "fs/file.h"
 
 /****************************************************************************
@@ -60,7 +59,7 @@
  *
  ****************************************************************************/
 
-static ssize_t file_pwrite64(FAR struct file *filep, FAR const void *buf,
+static ssize_t file_pwrite64(struct file *filep, const void *buf,
                       size_t nbytes, off64_t offset)
 {
   off64_t savepos;
@@ -145,9 +144,9 @@ static ssize_t file_pwrite64(FAR struct file *filep, FAR const void *buf,
  *
  ****************************************************************************/
 
-ssize_t pwrite64(int fd, FAR const void *buf, size_t nbytes, off64_t offset)
+ssize_t pwrite64(int fd, const void *buf, size_t nbytes, off64_t offset)
 {
-  FAR struct file *filep;
+  struct file *filep;
 
   /* Get the file structure corresponding to the file descriptor. */
 

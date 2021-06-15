@@ -42,7 +42,6 @@
 #include "dirent.h"
 #include "errno.h"
 
-#include "fs/fs.h"
 #include "fs/dirent_fs.h"
 
 
@@ -70,7 +69,7 @@
  *
  ****************************************************************************/
 
-long telldir(FAR DIR *dirp)
+long telldir(DIR *dirp)
 {
   struct fs_dirent_s *idir = (struct fs_dirent_s *)dirp;
 

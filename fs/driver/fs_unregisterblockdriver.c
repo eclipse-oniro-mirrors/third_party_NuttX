@@ -39,9 +39,8 @@
 
 #include "vfs_config.h"
 
-#include "fs/fs.h"
+#include "fs/driver.h"
 
-#include "inode/inode.h"
 #include "string.h"
 #include "errno.h"
 

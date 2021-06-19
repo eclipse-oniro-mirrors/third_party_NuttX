@@ -44,10 +44,9 @@
 #include "assert.h"
 #include "errno.h"
 #include "stdlib.h"
-#include "fs/fs.h"
 #include "fs/dirent_fs.h"
-#include "fs/vnode.h"
-#include "fs/path_cache.h"
+#include "vnode.h"
+#include "path_cache.h"
 
 /****************************************************************************
  * Public Functions

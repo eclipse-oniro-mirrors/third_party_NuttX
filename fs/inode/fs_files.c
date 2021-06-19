@@ -45,17 +45,15 @@
 #include "semaphore.h"
 #include "assert.h"
 #include "errno.h"
-#include "fs/fs.h"
 #include "fs/file.h"
 #include "stdio.h"
 #include "stdlib.h"
-#include "fs/vnode.h"
+#include "vnode.h"
 #include "los_mux.h"
 #include "fs/fd_table.h"
 #ifdef LOSCFG_NET_LWIP_SACK
 #include "lwip/sockets.h"
 #endif
-#include "fs_file.h"
 #include "los_process_pri.h"
 #include "los_vm_filemap.h"
 #include "mqueue.h"
@@ -63,10 +61,6 @@
 
 #if CONFIG_NFILE_DESCRIPTORS > 0
 struct filelist tg_filelist;
-#endif
-
-#if CONFIG_NFILE_STREAMS > 0
-struct streamlist tg_streamlist;
 #endif
 
 /****************************************************************************
@@ -372,7 +366,6 @@ int file_dup2(struct file *filep1, struct file *filep2)
 
   if (vnode_ptr->vop)
     {
-#ifndef CONFIG_DISABLE_MOUNTPOINT
       if (vnode_ptr->originMount)
         {
           /* Dup the open file on the in the new file structure */
@@ -383,7 +376,6 @@ int file_dup2(struct file *filep1, struct file *filep2)
             }
         }
       else
-#endif
         {
           /* (Re-)open the pseudo file or device driver */
 
@@ -701,7 +693,7 @@ void files_refer(int fd)
 {
   struct file *filep = NULL;
 
-  FAR struct filelist *list = sched_getfiles();
+  struct filelist *list = sched_getfiles();
   if (!list || fd < 0 || fd >= CONFIG_NFILE_DESCRIPTORS)
     {
       return;

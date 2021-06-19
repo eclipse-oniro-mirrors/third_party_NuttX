@@ -44,7 +44,7 @@
 #include "sched.h"
 #include "assert.h"
 #include "errno.h"
-#include "fs/vnode.h"
+#include "vnode.h"
 
 #if CONFIG_NFILE_DESCRIPTORS > 0
 

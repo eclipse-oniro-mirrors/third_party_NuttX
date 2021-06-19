@@ -45,7 +45,7 @@
 #include "assert.h"
 #include "errno.h"
 
-#include "fs/vnode.h"
+#include "vnode.h"
 
 /****************************************************************************
  * Name: file_truncate

@@ -38,11 +38,9 @@
  ****************************************************************************/
 
 #include "vfs_config.h"
-#include "debug.h"
 #include "errno.h"
-#include "fs/fs.h"
-#include "fs/vnode.h"
-#include "driver/driver.h"
+#include "fs/driver.h"
+#include "vnode.h"
 #include "disk.h"
 #include <linux/kernel.h>
 
@@ -101,7 +99,7 @@ int open_blockdriver(const char *pathname, int mountflags,
   ret = find_blockdriver(pathname, mountflags, &vnode_ptr);
   if (ret < 0)
     {
-      fdbg("Failed to file %s block driver\n", pathname);
+      PRINT_DEBUG("Failed to file %s block driver\n", pathname);
       goto errout;
     }
 
@@ -136,7 +134,7 @@ int open_blockdriver(const char *pathname, int mountflags,
               ret = ops->open(vnode_ptr);
               if (ret < 0)
                 {
-                  fdbg("%s driver open failed\n", pathname);
+                  PRINT_DEBUG("%s driver open failed\n", pathname);
                   (void)pthread_mutex_unlock(&disk->disk_mutex);
                   goto errout_with_vnode;
                 }
@@ -157,7 +155,7 @@ int open_blockdriver(const char *pathname, int mountflags,
           ret = ops->open(vnode_ptr);
           if (ret < 0)
             {
-              fdbg("%s driver open failed\n", pathname);
+              PRINT_DEBUG("%s driver open failed\n", pathname);
               goto errout_with_vnode;
             }
         }

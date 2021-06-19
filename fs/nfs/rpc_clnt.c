@@ -80,7 +80,6 @@
 
 #include <sys/time.h>
 #include <stdlib.h>
-#include <debug.h>
 #include <unistd.h>
 #include "lwip/opt.h"
 #include "lwip/sockets.h"
@@ -179,7 +178,7 @@ static int rpcclnt_send(struct rpcclnt *rpc, int procid, int prog,
       /* psock_sendto failed */
 
       ret = get_errno();
-      ferr("ERROR: psock_sendto failed: %d\n", ret);
+      PRINT_ERR("psock_sendto failed: %d\n", ret);
     }
 
   return ret;
@@ -217,13 +216,13 @@ retry:
   ret = select(rpc->rc_so + 1, &fdreadset, 0, 0, &timeval);
   if (ret == 0)
     {
-      fdbg("ERROR: rpcclnt_receive select nothing\n");
+      PRINT_DEBUG("ERROR: rpcclnt_receive select nothing\n");
       return EAGAIN;
     }
   else if (ret < 0)
     {
       error = get_errno();
-      fdbg("ERROR: rpcclnt_receive select error %d\n", error);
+      PRINT_DEBUG("ERROR: rpcclnt_receive select error %d\n", error);
       return error;
     }
 
@@ -231,7 +230,7 @@ retry:
   if (nbytes <= (ssize_t)sizeof(xid))
     {
       error = get_errno();
-      fdbg("ERROR: psock_recvfrom failed: %d\n", error);
+      PRINT_DEBUG("ERROR: psock_recvfrom failed: %d\n", error);
       goto retry;
     }
 
@@ -243,7 +242,7 @@ retry:
 
   if (fxdr_unsigned(uint32_t, xid) != rpc->xid)
     {
-      fdbg("ERROR: psock_recvfrom a wrong packet\n");
+      PRINT_DEBUG("ERROR: psock_recvfrom a wrong packet\n");
       goto retry;
     }
 
@@ -286,13 +285,13 @@ static int rpcclnt_receive(struct rpcclnt *rpc, struct sockaddr *aname,
       ret = select(rpc->rc_so + 1, &fdreadset, 0, 0, &timeval);
       if (ret == 0) /* no reply */
         {
-          fdbg("ERROR: rpcclnt_receive select nothing\n");
+          PRINT_DEBUG("ERROR: rpcclnt_receive select nothing\n");
           return EAGAIN;
         }
       else if (ret < 0) /* select error */
         {
           error = get_errno();
-          fdbg("ERROR: rpcclnt_receive select error %d\n", error);
+          PRINT_DEBUG("ERROR: rpcclnt_receive select error %d\n", error);
           return error;
         }
 
@@ -300,14 +299,14 @@ static int rpcclnt_receive(struct rpcclnt *rpc, struct sockaddr *aname,
       if (nbytes < 0)
         {
           error = get_errno();
-          fdbg("ERROR: rpcclnt_receive recvfrom error %d\n", error);
+          PRINT_DEBUG("ERROR: rpcclnt_receive recvfrom error %d\n", error);
           return error;
         }
       else if (nbytes == 0)
         {
           /* connection closed by peer side */
 
-          fdbg("ERROR: rpcclnt_receive connection closed by peer\n");
+          PRINT_DEBUG("ERROR: rpcclnt_receive connection closed by peer\n");
           return EIO;
         }
       else
@@ -360,7 +359,7 @@ static int rpcclnt_reply(struct rpcclnt *rpc, int procid, int prog,
   error = rpcclnt_receive(rpc, rpc->rc_name, procid, prog, reply, resplen);
   if (error != 0)
     {
-      ferr("ERROR: rpcclnt_receive returned: %d\n", error);
+      PRINT_ERR("rpcclnt_receive returned: %d\n", error);
 
       /* For UDP, If we failed because of a timeout, then try sending the CALL
        * message again. While for TCP, just return errno.
@@ -383,7 +382,7 @@ static int rpcclnt_reply(struct rpcclnt *rpc, int procid, int prog,
 
       if (replyheader->rp_direction != rpc_reply)
         {
-          ferr("ERROR: Different RPC REPLY returned\n");
+          PRINT_ERR("Different RPC REPLY returned\n");
           rpc_statistics(rpcinvalid);
           error = EPROTO;
         }
@@ -468,7 +467,7 @@ static int rpcclnt_alivecheck(struct rpcclnt *rpc)
     ret = select(sockfd + 1, &rfd, NULL, NULL, &timeout);
     if (ret < 0)
       {
-        fvdbg("ERROR rpc_alivecheck : select failure\n");
+        PRINT_DEBUG("ERROR rpc_alivecheck : select failure\n");
         return get_errno();
       }
 
@@ -484,7 +483,7 @@ static int rpcclnt_alivecheck(struct rpcclnt *rpc)
               }
             else
               {
-                fvdbg("ERROR rpc_alivecheck : recv unsolocit %d data from server\n", recvlen);
+                PRINT_DEBUG("ERROR rpc_alivecheck : recv unsolocit %d data from server\n", recvlen);
                 return ENOTSOCK;
               }
           }
@@ -561,7 +560,7 @@ static int rpcclnt_reconnect(struct rpcclnt *rpc, struct sockaddr *saddr)
   error = socket(rpc->rc_name->sa_family, rpc->rc_sotype, IPPROTO_TCP);
   if (error < 0)
     {
-      fdbg("ERROR: psock_socket failed: %d", get_errno());
+      PRINT_DEBUG("ERROR: psock_socket failed: %d", get_errno());
       return -error;
     }
 
@@ -580,14 +579,14 @@ static int rpcclnt_reconnect(struct rpcclnt *rpc, struct sockaddr *saddr)
       if (error < 0)
         {
           errval = get_errno();
-          fdbg("ERROR: psock_bind failed: %d\n", errval);
+          PRINT_DEBUG("ERROR: psock_bind failed: %d\n", errval);
         }
     }
   while (errval == EADDRINUSE && trycount > 0);
 
   if (error)
     {
-      fdbg("ERROR: psock_bind failed: %d, port = %d\n", errval, tport);
+      PRINT_DEBUG("ERROR: psock_bind failed: %d, port = %d\n", errval, tport);
       goto bad;
     }
 #endif
@@ -595,7 +594,7 @@ static int rpcclnt_reconnect(struct rpcclnt *rpc, struct sockaddr *saddr)
   if (error < 0)
     {
       errval = get_errno();
-      fdbg("ERROR: psock_connect failed [port=%d]: %d\n",
+      PRINT_DEBUG("ERROR: psock_connect failed [port=%d]: %d\n",
            ntohs(((struct sockaddr_in *)saddr)->sin_port), errval);
       goto bad;
     }
@@ -631,7 +630,7 @@ void rpcclnt_init(void)
   rpc_auth_unix = txdr_unsigned(RPCAUTH_UNIX);
   rpc_auth_null = txdr_unsigned(RPCAUTH_NULL);
 
-  finfo("RPC initialized\n");
+  PRINT_INFO("RPC initialized\n");
 }
 
 /****************************************************************************
@@ -667,7 +666,7 @@ int rpcclnt_connect(struct rpcclnt *rpc)
   uint16_t tport = 0;
   int errval;
 
-  finfo("Connecting\n");
+  PRINT_INFO("Connecting\n");
 
   /* Create the socket */
 
@@ -678,7 +677,7 @@ int rpcclnt_connect(struct rpcclnt *rpc)
   error = socket(saddr->sa_family, rpc->rc_sotype, NFS_PROTOTYPE);
   if (error < 0)
     {
-      fdbg("ERROR: psock_socket failed: %d", get_errno());
+      PRINT_DEBUG("ERROR: psock_socket failed: %d", get_errno());
       return -error;
     }
 
@@ -698,14 +697,14 @@ int rpcclnt_connect(struct rpcclnt *rpc)
       if (error < 0)
         {
           errval = get_errno();
-          ferr("ERROR: psock_bind failed: %d\n", errval);
+          PRINT_ERR("psock_bind failed: %d\n", errval);
         }
     }
   while (errval == EADDRINUSE && trycount > 0);
 
   if (error)
     {
-      ferr("ERROR: psock_bind failed: %d, port = %d\n", errval, tport);
+      PRINT_ERR("psock_bind failed: %d, port = %d\n", errval, tport);
       goto bad;
     }
 
@@ -718,7 +717,7 @@ int rpcclnt_connect(struct rpcclnt *rpc)
   if (error < 0)
     {
       error = get_errno();
-      ferr("ERROR: psock_connect to PMAP port failed: %d", error);
+      PRINT_ERR("psock_connect to PMAP port failed: %d", error);
       goto bad;
     }
 
@@ -736,7 +735,7 @@ int rpcclnt_connect(struct rpcclnt *rpc)
                           (void *)&response.rdata, sizeof(struct rpc_reply_pmap));
   if (error != 0)
     {
-      ferr("ERROR: rpcclnt_request failed: %d\n", error);
+      PRINT_ERR("rpcclnt_request failed: %d\n", error);
       goto bad;
     }
 
@@ -746,7 +745,7 @@ int rpcclnt_connect(struct rpcclnt *rpc)
   error = rpcclnt_reconnect(rpc, saddr);
   if (error != 0)
     {
-      fdbg("ERROR: rpcclnt_reconnect failed: %d\n", error);
+      PRINT_DEBUG("ERROR: rpcclnt_reconnect failed: %d\n", error);
       goto bad;
     }
 
@@ -774,14 +773,14 @@ int rpcclnt_connect(struct rpcclnt *rpc)
                           sizeof(struct rpc_reply_mount));
   if (error != 0)
     {
-      ferr("ERROR: rpcclnt_request failed: %d\n", error);
+      PRINT_ERR("rpcclnt_request failed: %d\n", error);
       goto bad;
     }
 
   error = fxdr_unsigned(uint32_t, response.mdata.mount.status);
   if (error != 0)
     {
-      ferr("ERROR: Bad mount status: %d\n", error);
+      PRINT_ERR("Bad mount status: %d\n", error);
       goto bad;
     }
 
@@ -797,7 +796,7 @@ int rpcclnt_connect(struct rpcclnt *rpc)
   error = rpcclnt_reconnect(rpc, saddr);
   if (error != 0)
     {
-      fdbg("ERROR: rpcclnt_reconnect failed: %d\n", error);
+      PRINT_DEBUG("ERROR: rpcclnt_reconnect failed: %d\n", error);
       goto bad;
     }
 
@@ -813,7 +812,7 @@ int rpcclnt_connect(struct rpcclnt *rpc)
                           sizeof(struct rpc_reply_pmap));
   if (error != 0)
     {
-      ferr("ERROR: rpcclnt_request failed: %d\n", error);
+      PRINT_ERR("rpcclnt_request failed: %d\n", error);
       goto bad;
     }
 
@@ -822,7 +821,7 @@ int rpcclnt_connect(struct rpcclnt *rpc)
   error = rpcclnt_reconnect(rpc, saddr);
   if (error != 0)
     {
-      fdbg("ERROR: rpcclnt_reconnect failed: %d\n", error);
+      PRINT_DEBUG("ERROR: rpcclnt_reconnect failed: %d\n", error);
       goto bad;
     }
 
@@ -889,7 +888,7 @@ int rpcclnt_umount(struct rpcclnt *rpc)
   error = rpcclnt_reconnect(rpc, saddr);
   if (error != 0)
     {
-      fdbg("ERROR: rpcclnt_reconnect failed: %d\n", error);
+      PRINT_DEBUG("ERROR: rpcclnt_reconnect failed: %d\n", error);
       goto bad;
     }
 
@@ -905,7 +904,7 @@ int rpcclnt_umount(struct rpcclnt *rpc)
                           sizeof(struct rpc_reply_pmap));
   if (error != 0)
     {
-      ferr("ERROR: rpcclnt_request failed: %d\n", error);
+      PRINT_ERR("rpcclnt_request failed: %d\n", error);
       goto bad;
     }
 
@@ -914,7 +913,7 @@ int rpcclnt_umount(struct rpcclnt *rpc)
   error = rpcclnt_reconnect(rpc, saddr);
   if (error != 0)
     {
-      fdbg("ERROR: rpcclnt_reconnect failed: %d\n", error);
+      PRINT_DEBUG("ERROR: rpcclnt_reconnect failed: %d\n", error);
       goto bad;
     }
 
@@ -932,7 +931,7 @@ int rpcclnt_umount(struct rpcclnt *rpc)
                           sizeof(struct rpc_reply_umount));
   if (error != 0)
     {
-      ferr("ERROR: rpcclnt_request failed: %d\n", error);
+      PRINT_ERR("rpcclnt_request failed: %d\n", error);
       goto bad;
     }
 
@@ -1005,7 +1004,7 @@ int rpcclnt_request(struct rpcclnt *rpc, int procnum, int prog,
       error = rpcclnt_send(rpc, procnum, prog, request, reqlen);
       if (error != OK)
         {
-          finfo("ERROR rpcclnt_send failed: %d\n", error);
+          PRINT_INFO("ERROR rpcclnt_send failed: %d\n", error);
         }
 
       /* Wait for the reply from our send */
@@ -1015,7 +1014,7 @@ int rpcclnt_request(struct rpcclnt *rpc, int procnum, int prog,
           error = rpcclnt_reply(rpc, procnum, prog, response, resplen);
           if (error != OK)
             {
-              finfo("ERROR rpcclnt_reply failed: %d\n", error);
+              PRINT_INFO("ERROR rpcclnt_reply failed: %d\n", error);
             }
         }
 
@@ -1025,7 +1024,7 @@ int rpcclnt_request(struct rpcclnt *rpc, int procnum, int prog,
 
   if (error != OK)
     {
-      ferr("ERROR: RPC failed: %d\n", error);
+      PRINT_ERR("RPC failed: %d\n", error);
       return error;
     }
 
@@ -1038,7 +1037,7 @@ int rpcclnt_request(struct rpcclnt *rpc, int procnum, int prog,
       error = rpcclnt_alivecheck(rpc);
       if (error != OK)
         {
-          fvdbg("ERROR rpc_alivecheck failed: %d\n", error);
+          PRINT_DEBUG("ERROR rpc_alivecheck failed: %d\n", error);
           return error;
         }
     }
@@ -1050,7 +1049,7 @@ int rpcclnt_request(struct rpcclnt *rpc, int procnum, int prog,
       error = rpcclnt_reconnect(rpc, rpc->rc_name);
       if (error != OK)
         {
-          fvdbg("ERROR rpcclnt_send failed: %d\n", error);
+          PRINT_DEBUG("ERROR rpcclnt_send failed: %d\n", error);
           return error;
         }
     }
@@ -1063,7 +1062,7 @@ int rpcclnt_request(struct rpcclnt *rpc, int procnum, int prog,
   if (error != OK)
     {
       rpcclnt_disconnect(rpc);
-      fvdbg("ERROR rpcclnt_send failed: %d\n", error);
+      PRINT_DEBUG("ERROR rpcclnt_send failed: %d\n", error);
       return error;
     }
 
@@ -1073,7 +1072,7 @@ int rpcclnt_request(struct rpcclnt *rpc, int procnum, int prog,
   if (error != OK)
     {
       rpcclnt_disconnect(rpc);
-      fvdbg("ERROR rpcclnt_reply failed: %d\n", error);
+      PRINT_DEBUG("ERROR rpcclnt_reply failed: %d\n", error);
       return error;
     }
 
@@ -1090,11 +1089,11 @@ int rpcclnt_request(struct rpcclnt *rpc, int procnum, int prog,
       switch (tmp)
         {
         case RPC_MISMATCH:
-          ferr("ERROR: RPC_MSGDENIED: RPC_MISMATCH error\n");
+          PRINT_ERR("RPC_MSGDENIED: RPC_MISMATCH error\n");
           return EOPNOTSUPP;
 
         case RPC_AUTHERR:
-          ferr("ERROR: RPC_MSGDENIED: RPC_AUTHERR error\n");
+          PRINT_ERR("RPC_MSGDENIED: RPC_AUTHERR error\n");
           return EACCES;
 
         default:
@@ -1109,16 +1108,16 @@ int rpcclnt_request(struct rpcclnt *rpc, int procnum, int prog,
   tmp = fxdr_unsigned(uint32_t, replymsg->status);
   if (tmp == RPC_SUCCESS)
     {
-      finfo("RPC_SUCCESS\n");
+      PRINT_INFO("RPC_SUCCESS\n");
     }
   else if (tmp == RPC_PROGMISMATCH)
     {
-      ferr("ERROR: RPC_MSGACCEPTED: RPC_PROGMISMATCH error\n");
+      PRINT_ERR("RPC_MSGACCEPTED: RPC_PROGMISMATCH error\n");
       return EOPNOTSUPP;
     }
   else if (tmp > 5)
     {
-      ferr("ERROR: Unsupported RPC type: %d\n", tmp);
+      PRINT_ERR("Unsupported RPC type: %d\n", tmp);
       return EOPNOTSUPP;
     }
 

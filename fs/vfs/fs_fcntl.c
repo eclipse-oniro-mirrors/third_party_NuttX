@@ -44,8 +44,7 @@
 #include "fcntl.h"
 #include "errno.h"
 #include "assert.h"
-#include "fs/fs.h"
-#include "fs/vnode.h"
+#include "vnode.h"
 
 #if defined(LOSCFG_NET_LWIP_SACK)
 #include "lwip/sockets.h"

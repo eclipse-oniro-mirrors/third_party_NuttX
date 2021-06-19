@@ -41,13 +41,12 @@
 
 #include "sys/mount.h"
 #include "errno.h"
-#include "fs/fs.h"
-#include "fs/vnode.h"
+#include "vnode.h"
 #include "stdlib.h"
 #include "unistd.h"
 #include "string.h"
 #include "disk.h"
-#include "fs_other.h"
+#include "fs/mount.h"
 
 /****************************************************************************
  * Public Functions

@@ -41,7 +41,6 @@
 #include <string.h>
 #include <errno.h>
 #include <assert.h>
-#include <debug.h>
 #include "bch.h"
 #include <stdlib.h>
 
@@ -74,9 +73,9 @@
  *
  ****************************************************************************/
 
-ssize_t bchlib_read(FAR void *handle, FAR char *buffer, loff_t offset, size_t len)
+ssize_t bchlib_read(void *handle, char *buffer, loff_t offset, size_t len)
 {
-  FAR struct bchlib_s *bch = (FAR struct bchlib_s *)handle;
+  struct bchlib_s *bch = (struct bchlib_s *)handle;
   size_t   nsectors;
   unsigned long long   sector;
   uint16_t sectoffset;
@@ -160,7 +159,7 @@ ssize_t bchlib_read(FAR void *handle, FAR char *buffer, loff_t offset, size_t le
           nsectors = bch->nsectors - sector;
         }
       /* No need for reading large contiguous data, useRead(param 4) is set TRUE */
-      ret = los_disk_read(bch->disk->disk_id, (FAR void *)buffer, sector + bch->sectstart, nsectors, TRUE);
+      ret = los_disk_read(bch->disk->disk_id, (void *)buffer, sector + bch->sectstart, nsectors, TRUE);
 
       if (ret < 0)
         {

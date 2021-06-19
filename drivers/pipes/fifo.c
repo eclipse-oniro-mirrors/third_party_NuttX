@@ -40,9 +40,7 @@
 #include <sys/stat.h>
 #include <stdint.h>
 #include <errno.h>
-
-#include <fs/fs.h>
-
+#include <fs/driver.h>
 #include "pipe_common.h"
 
 #if CONFIG_DEV_FIFO_SIZE > 0

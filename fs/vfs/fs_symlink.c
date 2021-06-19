@@ -30,7 +30,8 @@
 
 #include "unistd.h"
 #include "errno.h"
-#include "fs/vnode.h"
+#include "vnode.h"
+#include "path_cache.h"
 
 int follow_symlink(int dirfd, const char *path, struct Vnode **vnode, char **fullpath)
 {

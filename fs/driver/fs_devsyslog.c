@@ -46,7 +46,7 @@
 #include "fcntl.h"
 #include "semaphore.h"
 #include "assert.h"
-#include "fs/fs.h"
+#include "fs/driver.h"
 #include "inode/inode.h"
 
 #if defined(CONFIG_SYSLOG) && defined(CONFIG_SYSLOG_CHAR)
@@ -184,9 +184,9 @@ static inline void syslog_givesem(void)
  *
  ****************************************************************************/
 
-static inline ssize_t syslog_write(FAR const void *buf, size_t nbytes)
+static inline ssize_t syslog_write(const void *buf, size_t nbytes)
 {
-  FAR struct inode *inode_ptr;
+  struct inode *inode_ptr;
 
   /* Let the driver perform the write */
 
@@ -205,7 +205,7 @@ static inline ssize_t syslog_write(FAR const void *buf, size_t nbytes)
 #ifndef CONFIG_DISABLE_MOUNTPOINT
 static inline void syslog_flush(void)
 {
-  FAR struct inode *inode_ptr = g_sysdev.sl_file.f_inode;
+  struct inode *inode_ptr = g_sysdev.sl_file.f_inode;
 
   /* Is this a mountpoint? Does it support the sync method? */
 
@@ -236,8 +236,8 @@ static inline void syslog_flush(void)
 
 int syslog_initialize(void)
 {
-  FAR struct inode   *inode_ptr;
-  FAR const char     *relpath = NULL;
+  struct inode   *inode_ptr;
+  const char     *relpath = NULL;
   int                ret;
   struct inode_search_s desc;
 

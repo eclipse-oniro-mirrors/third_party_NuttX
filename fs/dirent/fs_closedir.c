@@ -41,9 +41,8 @@
 #include "dirent.h"
 #include "errno.h"
 #include "stdlib.h"
-#include "fs/fs.h"
 #include "fs/dirent_fs.h"
-#include "fs/vnode.h"
+#include "vnode.h"
 
 /****************************************************************************
  * Public Functions

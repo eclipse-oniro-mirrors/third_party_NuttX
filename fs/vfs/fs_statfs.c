@@ -42,7 +42,8 @@
 #include "sys/statfs.h"
 #include "string.h"
 #include "sched.h"
-#include "fs/vnode.h"
+#include "vnode.h"
+#include "fs/mount.h"
 #include "errno.h"
 #include "stdlib.h"
 

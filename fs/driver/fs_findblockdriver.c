@@ -39,12 +39,10 @@
 
 #include "vfs_config.h"
 
-#include "driver/driver.h"
 #include "sys/types.h"
 #include "sys/mount.h"
-#include "debug.h"
 #include "errno.h"
-#include "fs/fs.h"
+#include "fs/driver.h"
 #include "string.h"
 
 /****************************************************************************
@@ -91,7 +89,7 @@ int find_blockdriver(const char *pathname, int mountflags, struct Vnode **vpp)
   /* Verify that the vnode is a block driver. */
   if (vp->type != VNODE_TYPE_BLK)
     {
-      fdbg("%s is not a block driver\n", pathname);
+      PRINT_DEBUG("%s is not a block driver\n", pathname);
       ret = -ENOTBLK;
       goto errout;
     }
@@ -102,7 +100,7 @@ int find_blockdriver(const char *pathname, int mountflags, struct Vnode **vpp)
 
   if (i_bops == NULL || i_bops->read == NULL || (i_bops->write == NULL && (mountflags & MS_RDONLY) == 0))
     {
-      fdbg("%s does not support requested access\n", pathname);
+      PRINT_DEBUG("%s does not support requested access\n", pathname);
       ret = -EACCES;
       goto errout;
     }

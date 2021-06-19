@@ -45,7 +45,6 @@
 #include "stdlib.h"
 #include "fs/fs.h"
 
-#include "fs_other.h"
 #include "inode/inode.h"
 /****************************************************************************
  * Public Data

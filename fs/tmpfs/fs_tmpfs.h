@@ -41,7 +41,6 @@
  ****************************************************************************/
 
 #include <semaphore.h>
-#include "fs/fs.h"
 
 #ifdef __cplusplus
 #if __cplusplus
@@ -98,8 +97,8 @@ struct tmpfs_sem_s
 struct tmpfs_dirent_s
 {
   LOS_DL_LIST tde_node;
-  FAR struct tmpfs_object_s *tde_object;
-  FAR char *tde_name;
+  struct tmpfs_object_s *tde_object;
+  char *tde_name;
   bool tde_inuse;
 };
 
@@ -107,7 +106,7 @@ struct tmpfs_dirent_s
 
 struct tmpfs_object_s
 {
-  FAR struct tmpfs_dirent_s *to_dirent;
+  struct tmpfs_dirent_s *to_dirent;
   struct tmpfs_sem_s to_exclsem;
 
   uint8_t  to_type;      /* See enum tmpfs_objtype_e */
@@ -127,7 +126,7 @@ struct tmpfs_directory_s
 {
   /* First fields must match common TMPFS object layout */
 
-  FAR struct tmpfs_dirent_s *tdo_dirent;
+  struct tmpfs_dirent_s *tdo_dirent;
   struct tmpfs_sem_s tdo_exclsem;
 
   uint8_t  tdo_type;     /* See enum tmpfs_objtype_e */
@@ -162,7 +161,7 @@ struct tmpfs_file_s
 {
   /* First fields must match common TMPFS object layout */
 
-  FAR struct tmpfs_dirent_s *tfo_dirent;
+  struct tmpfs_dirent_s *tfo_dirent;
   struct tmpfs_sem_s tfo_exclsem;
 
   uint8_t  tfo_type;     /* See enum tmpfs_objtype_e */
@@ -189,7 +188,7 @@ struct tmpfs_file_s
 struct tmpfs_s
 {
   /* The root directory */
-  FAR struct tmpfs_dirent_s tfs_root;
+  struct tmpfs_dirent_s tfs_root;
   struct tmpfs_sem_s tfs_exclsem;
 };
 
@@ -205,8 +204,8 @@ struct tmpfs_statfs_s
 
 /* This is the type of the for tmpfs_foreach callback */
 
-typedef int (*tmpfs_foreach_t)(FAR struct tmpfs_directory_s *tdo,
-                               unsigned int index, FAR void *arg);
+typedef int (*tmpfs_foreach_t)(struct tmpfs_directory_s *tdo,
+                               unsigned int index, void *arg);
 
 /****************************************************************************
  * Public Data

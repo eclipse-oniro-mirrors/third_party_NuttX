@@ -41,14 +41,11 @@
 #include "errno.h"
 #include "sys/types.h"
 #include "sys/stat.h"
-#include "fs/fs.h"
 #include "stdlib.h"
-#include "fs/vnode.h"
+#include "vnode.h"
 #include "string.h"
-#include "fs_other.h"
 #include "capability_api.h"
-#include "fs/path_cache.h"
-#include "fs/vfs_util.h"
+#include "path_cache.h"
 
 /****************************************************************************
  * Private Functions

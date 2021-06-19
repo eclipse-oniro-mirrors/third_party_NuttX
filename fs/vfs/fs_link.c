@@ -30,7 +30,8 @@
 
 #include "unistd.h"
 #include "errno.h"
-#include "fs/vnode.h"
+#include "vnode.h"
+#include "path_cache.h"
 
 int do_link(int oldfd, const char *oldpath, int newfd, const char *newpath, int flag)
 {

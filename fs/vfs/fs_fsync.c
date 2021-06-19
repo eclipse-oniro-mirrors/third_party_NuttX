@@ -45,10 +45,9 @@
 #include "errno.h"
 #include "assert.h"
 
-#include "fs/fs.h"
 
 
-#include "fs/vnode.h"
+#include "vnode.h"
 
 /****************************************************************************
  * Public Functions

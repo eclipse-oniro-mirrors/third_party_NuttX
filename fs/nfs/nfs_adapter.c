@@ -55,7 +55,6 @@
 #include <semaphore.h>
 #include <assert.h>
 #include <errno.h>
-#include <debug.h>
 #include <pthread.h>
 #include <unistd.h>
 #include "lwip/opt.h"
@@ -68,7 +67,7 @@
 #include "nfs_node.h"
 #include "xdr_subs.h"
 #include "los_tables.h"
-#include "fs/vnode.h"
+#include "vnode.h"
 #include "los_vm_filemap.h"
 #include "user_copy.h"
 
@@ -101,7 +100,7 @@ struct nfsstats nfsstats;
       entry = (struct entry3 *)malloc(sizeof(struct entry3));                 \
       if (entry == NULL)                                                      \
         {                                                                     \
-          fvdbg("malloc failed\n");                                           \
+          PRINT_DEBUG("malloc failed\n");                                           \
           error = ENOMEM;                                                     \
           goto errout_with_memory;                                            \
         }                                                                     \
@@ -382,7 +381,7 @@ static void nfs_decode_args(struct nfs_mount_parameters *nprmt,
       nprmt->retry = NFS_MAXREXMIT + 1;  /* Past clip limit */
     }
 
-  /* Get the maximum amount of data that can be transferred in one packet */
+  /* Get the maximum amount of data that can be transPRINT_ERRed in one packet */
 
   if ((argp->sotype == SOCK_DGRAM) != 0)
     {
@@ -390,11 +389,11 @@ static void nfs_decode_args(struct nfs_mount_parameters *nprmt,
     }
   else
     {
-      ferr("ERROR: Only SOCK_DRAM is supported\n");
+      PRINT_ERR("Only SOCK_DRAM is supported\n");
       maxio = NFS_MAXDATA;
     }
 
-  /* Get the maximum amount of data that can be transferred in one write transfer */
+  /* Get the maximum amount of data that can be transPRINT_ERRed in one write transfer */
 
   if ((argp->flags & NFSMNT_WSIZE) != 0 && argp->wsize > 0)
     {
@@ -419,7 +418,7 @@ static void nfs_decode_args(struct nfs_mount_parameters *nprmt,
       nprmt->wsize = MAXBSIZE;
     }
 
-  /* Get the maximum amount of data that can be transferred in one read transfer */
+  /* Get the maximum amount of data that can be transPRINT_ERRed in one read transfer */
 
   if ((argp->flags & NFSMNT_RSIZE) != 0 && argp->rsize > 0)
     {
@@ -444,7 +443,7 @@ static void nfs_decode_args(struct nfs_mount_parameters *nprmt,
       nprmt->rsize = MAXBSIZE;
     }
 
-  /* Get the maximum amount of data that can be transferred in directory transfer */
+  /* Get the maximum amount of data that can be transPRINT_ERRed in directory transfer */
 
   if ((argp->flags & NFSMNT_READDIRSIZE) != 0 && argp->readdirsize > 0)
     {
@@ -544,7 +543,7 @@ int nfs_bind(struct Vnode *blkdriver, const void *data,
   nmp = (struct nfsmount *)malloc(SIZEOF_nfsmount(buflen));
   if (!nmp)
     {
-      ferr("ERROR: Failed to allocate mountpoint structure\n");
+      PRINT_ERR("Failed to allocate mountpoint structure\n");
       return -ENOMEM;
     }
 
@@ -599,14 +598,14 @@ int nfs_bind(struct Vnode *blkdriver, const void *data,
       rpc = (struct rpcclnt *)malloc(sizeof(struct rpcclnt));
       if (!rpc)
         {
-          ferr("ERROR: Failed to allocate rpc structure\n");
+          PRINT_ERR("Failed to allocate rpc structure\n");
           error = ENOMEM;
           goto bad;
         }
 
       (void)memset_s(rpc, sizeof(struct rpcclnt), 0, sizeof(struct rpcclnt));
 
-      finfo("Connecting\n");
+      PRINT_INFO("Connecting\n");
 
       /* Translate nfsmnt flags -> rpcclnt flags */
 
@@ -644,7 +643,7 @@ int nfs_bind(struct Vnode *blkdriver, const void *data,
                       (void *)&resok, sizeof(struct rpc_reply_getattr));
   if (error)
     {
-      ferr("ERROR: nfs_request failed: %d\n", error);
+      PRINT_ERR("nfs_request failed: %d\n", error);
       goto bad;
     }
 
@@ -656,7 +655,7 @@ int nfs_bind(struct Vnode *blkdriver, const void *data,
 
   *handle = (void *)nmp;
 
-  finfo("Successfully mounted\n");
+  PRINT_INFO("Successfully mounted\n");
   return OK;
 
 bad:
@@ -2652,7 +2651,7 @@ static int vfs_nfs_unmount(struct Mount *mnt, struct Vnode **blkDriver)
 
   if (nmp->nm_head != NULL || nmp->nm_dir != NULL)
     {
-      ferr("ERROR;  There are open files: %p or directories: %p\n", nmp->nm_head, nmp->nm_dir);
+      PRINT_ERR("There are open files: %p or directories: %p\n", nmp->nm_head, nmp->nm_dir);
 
       /* This implementation currently only supports unmounting if there are
        * no open file references.
@@ -2667,7 +2666,7 @@ static int vfs_nfs_unmount(struct Mount *mnt, struct Vnode **blkDriver)
   error = rpcclnt_umount(nmp->nm_rpcclnt);
   if (error)
     {
-      ferr("ERROR: rpcclnt_umount failed: %d\n", error);
+      PRINT_ERR("rpcclnt_umount failed: %d\n", error);
       goto errout_with_mutex;
     }
 

@@ -42,12 +42,11 @@
 #include "stdio.h"
 #include "unistd.h"
 #include "errno.h"
-#include "fs/fs.h"
 #include "stdlib.h"
-#include "fs/vnode.h"
-#include "fs_other.h"
+#include "vnode.h"
 #include "limits.h"
 #include "fs/fs_operation.h"
+#include "path_cache.h"
 /****************************************************************************
  * Public Functions
  ****************************************************************************/

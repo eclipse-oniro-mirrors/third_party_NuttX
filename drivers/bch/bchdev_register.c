@@ -39,7 +39,6 @@
 #include <stdbool.h>
 #include <errno.h>
 #include <assert.h>
-#include <debug.h>
 #include "bch.h"
 
 /****************************************************************************
@@ -55,10 +54,10 @@
  *
  ****************************************************************************/
 
-int bchdev_register(FAR const char *blkdev, FAR const char *chardev,
+int bchdev_register(const char *blkdev, const char *chardev,
                     bool readonly)
 {
-  FAR void *handle;
+  void *handle;
   int ret;
 
   /* Setup the BCH lib functions */

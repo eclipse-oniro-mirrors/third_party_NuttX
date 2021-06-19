@@ -113,26 +113,26 @@ struct nfsstats
 /****************************************************************************
  * Public Function Prototypes
  ****************************************************************************/
-extern void nfs_mux_take(FAR struct nfsmount *nmp);
-extern void nfs_mux_release(FAR struct nfsmount *nmp);
-extern int  nfs_checkmount(FAR struct nfsmount *nmp);
-extern int  nfs_fsinfo(FAR struct nfsmount *nmp);
+extern void nfs_mux_take(struct nfsmount *nmp);
+extern void nfs_mux_release(struct nfsmount *nmp);
+extern int  nfs_checkmount(struct nfsmount *nmp);
+extern int  nfs_fsinfo(struct nfsmount *nmp);
 extern int nfs_request(struct nfsmount *nmp, int procnum,
-                FAR void *request, size_t reqlen,
-                FAR void *response, size_t resplen);
-extern int  nfs_lookup(FAR struct nfsmount *nmp, FAR const char *filename,
-              FAR struct file_handle *fhandle,
-              FAR struct nfs_fattr *obj_attributes,
-              FAR struct nfs_fattr *dir_attributes);
-extern int  nfs_findnode(FAR struct nfsmount *nmp, FAR const char *relpath,
-              FAR struct file_handle *fhandle,
-              FAR struct nfs_fattr *obj_attributes,
-              FAR struct nfs_fattr *dir_attributes);
-extern int nfs_finddir(FAR struct nfsmount *nmp, FAR const char *relpath,
-              FAR struct file_handle *fhandle,
-              FAR struct nfs_fattr *attributes, FAR char *filename);
-extern void nfs_attrupdate(FAR struct nfsnode *np,
-              FAR struct nfs_fattr *attributes);
+                void *request, size_t reqlen,
+                void *response, size_t resplen);
+extern int  nfs_lookup(struct nfsmount *nmp, const char *filename,
+              struct file_handle *fhandle,
+              struct nfs_fattr *obj_attributes,
+              struct nfs_fattr *dir_attributes);
+extern int  nfs_findnode(struct nfsmount *nmp, const char *relpath,
+              struct file_handle *fhandle,
+              struct nfs_fattr *obj_attributes,
+              struct nfs_fattr *dir_attributes);
+extern int nfs_finddir(struct nfsmount *nmp, const char *relpath,
+              struct file_handle *fhandle,
+              struct nfs_fattr *attributes, char *filename);
+extern void nfs_attrupdate(struct nfsnode *np,
+              struct nfs_fattr *attributes);
 extern int nfs_mount(const char *server_ip_and_path, const char *mount_path,
               unsigned int uid, unsigned int gid);
 

@@ -37,10 +37,9 @@
  * Included Files
  ****************************************************************************/
 #include "vfs_config.h"
-#include "fs/fs.h"
-#include "fs/vnode.h"
+#include "fs/mount.h"
+#include "vnode.h"
 
-#ifndef CONFIG_DISABLE_MOUNTPOINT
 /****************************************************************************
  * Public Functions
  ****************************************************************************/
@@ -84,5 +83,3 @@ int foreach_mountpoint(foreach_mountpoint_t handler, void *arg)
     }
   return 0;
 }
-
-#endif

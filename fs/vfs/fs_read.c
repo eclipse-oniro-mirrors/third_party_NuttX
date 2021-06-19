@@ -48,7 +48,7 @@
 #include "assert.h"
 #include "errno.h"
 #include "user_copy.h"
-#include "fs/vnode.h"
+#include "vnode.h"
 
 /****************************************************************************
  * Public Functions

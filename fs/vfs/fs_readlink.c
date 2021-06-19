@@ -30,7 +30,7 @@
 
 #include "unistd.h"
 #include "errno.h"
-#include "fs/vnode.h"
+#include "vnode.h"
 
 ssize_t do_readlink(int dirfd, const char *path, char *buf, size_t bufsize)
 {

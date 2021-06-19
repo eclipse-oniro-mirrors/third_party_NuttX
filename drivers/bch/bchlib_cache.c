@@ -40,7 +40,6 @@
 #include <stdbool.h>
 #include <errno.h>
 #include <assert.h>
-#include <debug.h>
 #include "bch.h"
 
 /****************************************************************************
@@ -62,7 +61,7 @@
  *
  ****************************************************************************/
 
-int bchlib_flushsector(FAR struct bchlib_s *bch)
+int bchlib_flushsector(struct bchlib_s *bch)
 {
   int ret = OK;
 
@@ -74,7 +73,7 @@ int bchlib_flushsector(FAR struct bchlib_s *bch)
     {
       /* Write the sector to the media */
 
-      ret = los_disk_write(bch->disk->disk_id, (FAR const void *)bch->buffer, bch->sector, 1);
+      ret = los_disk_write(bch->disk->disk_id, (const void *)bch->buffer, bch->sector, 1);
       if (ret < 0)
         {
           PRINTK("bchlib_flushsector Write failed: %d\n", ret);
@@ -100,7 +99,7 @@ int bchlib_flushsector(FAR struct bchlib_s *bch)
  *
  ****************************************************************************/
 
-int bchlib_readsector(FAR struct bchlib_s *bch, unsigned long long sector)
+int bchlib_readsector(struct bchlib_s *bch, unsigned long long sector)
 {
   int ret = OK;
 
@@ -114,7 +113,7 @@ int bchlib_readsector(FAR struct bchlib_s *bch, unsigned long long sector)
 
       bch->sector = (unsigned long long)-1;
       /* useRead is set TRUE, it'll use read block for not reading large data */
-      ret = los_disk_read(bch->disk->disk_id, (FAR void *)bch->buffer, sector, 1, TRUE);
+      ret = los_disk_read(bch->disk->disk_id, (void *)bch->buffer, sector, 1, TRUE);
       if (ret < 0)
         {
           PRINTK("Read failed: %d\n", ret);

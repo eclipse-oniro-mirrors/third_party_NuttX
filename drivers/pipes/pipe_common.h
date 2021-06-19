@@ -39,8 +39,7 @@
 /****************************************************************************
  * Included Files
  ****************************************************************************/
-#include "fs/fs.h"
-#include "fs/vnode.h"
+#include "vnode.h"
 #include <sys/types.h>
 #include <limits.h>
 #include <stdint.h>
@@ -154,14 +153,14 @@ extern "C"
 struct file;  /* Forward reference */
 struct inode; /* Forward reference */
 
-FAR struct pipe_dev_s *pipecommon_allocdev(size_t bufsize, const char *name);
-void    pipecommon_freedev(FAR struct pipe_dev_s *dev);
-int     pipecommon_open(FAR struct file *filep);
-int     pipecommon_close(FAR struct file *filep);
-ssize_t pipecommon_read(FAR struct file *, FAR char *, size_t);
-ssize_t pipecommon_write(FAR struct file *, FAR const char *, size_t);
-int     pipecommon_ioctl(FAR struct file *filep, int cmd, unsigned long arg);
-int     pipecommon_poll(FAR struct file *filep, poll_table *fds);
+struct pipe_dev_s *pipecommon_allocdev(size_t bufsize, const char *name);
+void    pipecommon_freedev(struct pipe_dev_s *dev);
+int     pipecommon_open(struct file *filep);
+int     pipecommon_close(struct file *filep);
+ssize_t pipecommon_read(struct file *, char *, size_t);
+ssize_t pipecommon_write(struct file *, const char *, size_t);
+int     pipecommon_ioctl(struct file *filep, int cmd, unsigned long arg);
+int     pipecommon_poll(struct file *filep, poll_table *fds);
 #ifndef CONFIG_DISABLE_PSEUDOFS_OPERATIONS
 int     pipecommon_unlink(struct Vnode *vnode);
 #endif

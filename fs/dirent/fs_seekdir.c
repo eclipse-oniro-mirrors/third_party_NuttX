@@ -41,9 +41,8 @@
 #include "sys/types.h"
 #include "dirent.h"
 #include "errno.h"
-#include "fs/fs.h"
 #include "fs/dirent_fs.h"
-#include "fs/vnode.h"
+#include "vnode.h"
 
 /****************************************************************************
  * Private Functions

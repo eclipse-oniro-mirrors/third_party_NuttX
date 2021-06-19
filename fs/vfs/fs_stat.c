@@ -43,8 +43,7 @@
 #include "sys/stat.h"
 #include "string.h"
 #include "stdlib.h"
-#include "fs/vnode.h"
-#include "fs_other.h"
+#include "vnode.h"
 /****************************************************************************
  * Global Functions
  ****************************************************************************/

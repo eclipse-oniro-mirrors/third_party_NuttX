@@ -40,16 +40,12 @@
 
 #include "vfs_config.h"
 
-#include "driver/driver.h"
 #include "sys/mount.h"
 #include "string.h"
 #include "errno.h"
 #include "assert.h"
-#include "debug.h"
-#include "fs/fs.h"
-#include "fs/vnode.h"
+#include "vnode.h"
 #include "stdlib.h"
-#include "driver/driver.h"
 #ifdef LOSCFG_DRIVERS_MTD
 #include "mtd_partition.h"
 #endif
@@ -62,9 +58,10 @@
 #else
 #include "stdlib.h"
 #endif
-#include "fs/vfs_util.h"
-#include "fs/path_cache.h"
+#include "path_cache.h"
 #include "fs/mount.h"
+#include "fs/driver.h"
+#include "fs/fs.h"
 
 
 /* At least one filesystem must be defined, or this file will not compile.
@@ -269,7 +266,7 @@ int mount(const char *source, const char *target,
        * error.
        */
 
-      fdbg("ERROR: Bind method failed: %d\n", ret);
+      PRINT_ERR("Bind method failed: %d\n", ret);
       errcode = ret;
 #ifdef LOSCFG_DRIVERS_MTD
       if (fsmap->is_mtd_support && (device != NULL) && (partition != NULL))

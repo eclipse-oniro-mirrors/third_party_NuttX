@@ -37,11 +37,10 @@
  * Included Files
  ****************************************************************************/
 
-#include "fs/fs.h"
+#include "fs/driver.h"
 #include "vfs_config.h"
-#include "debug.h"
 #include "errno.h"
-#include "fs/vnode.h"
+#include "vnode.h"
 #include "disk.h"
 
 /****************************************************************************

@@ -43,7 +43,6 @@
 #include "unistd.h"
 #include "errno.h"
 
-#include "fs/fs.h"
 #include "fs/file.h"
 
 /****************************************************************************
@@ -60,7 +59,7 @@
  *
  ****************************************************************************/
 
-ssize_t file_pread64(FAR struct file *filep, FAR void *buf, size_t nbytes,
+ssize_t file_pread64(struct file *filep, void *buf, size_t nbytes,
                      off64_t offset)
 {
   off64_t savepos;
@@ -143,7 +142,7 @@ ssize_t file_pread64(FAR struct file *filep, FAR void *buf, size_t nbytes,
 
 ssize_t pread64(int fd, void *buf, size_t nbytes, off64_t offset)
 {
-  FAR struct file *filep;
+  struct file *filep;
 
   /* Get the file structure corresponding to the file descriptor. */
 

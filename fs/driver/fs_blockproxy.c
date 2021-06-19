@@ -47,12 +47,9 @@
 #include <string.h>
 #include <errno.h>
 #include <assert.h>
-#include <debug.h>
-#include "fs/fs.h"
+#include "fs/driver.h"
+#include "blockproxy.h"
 
-#include "driver/blockproxy.h"
-
-#if !defined(CONFIG_DISABLE_MOUNTPOINT)
 #ifdef LOSCFG_FS_VFS_BLOCK_DEVICE
 
 /****************************************************************************
@@ -167,7 +164,7 @@ static char *unique_chardev(void)
  *
  ****************************************************************************/
 
-int block_proxy(FAR const char *blkdev, int oflags)
+int block_proxy(const char *blkdev, int oflags)
 {
   struct file *filep = NULL;
   struct Vnode *vnode = NULL;
@@ -248,4 +245,3 @@ errout_with_chardev:
 }
 
 #endif
-#endif /* !CONFIG_DISABLE_MOUNTPOINT */

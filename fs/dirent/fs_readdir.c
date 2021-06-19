@@ -43,9 +43,10 @@
 #include "dirent.h"
 #include "errno.h"
 #include "unistd.h"
-#include "fs/fs.h"
 #include "fs/dirent_fs.h"
 #include "user_copy.h"
+#include "fs/file.h"
+#include "vnode.h"
 
 /****************************************************************************
  * Name: do_readdir

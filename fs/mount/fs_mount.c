@@ -281,10 +281,22 @@ int mount(const char *source, const char *target,
   mnt->vnodeCovered->flag |= VNODE_FLAG_MOUNT_NEW;
   mnt->ops = mops;
   mnt->mountFlags = mountflags;
-  ret = strcpy_s(mnt->pathName, PATH_MAX, target);
-  if (ret != EOK)
+  if (target && (strlen(target) != 0))
     {
-      PRINT_ERR("Failed to copy mount point pathname, errno %d\n", ret);
+      ret = strcpy_s(mnt->pathName, PATH_MAX, target);
+      if (ret != EOK)
+        {
+          PRINT_ERR("Failed to copy mount point pathname, errno %d\n", ret);
+        }
+    }
+
+  if (source && (strlen(source) != 0))
+    {
+      ret = strcpy_s(mnt->devName, PATH_MAX, source);
+      if (ret != EOK)
+        {
+          PRINT_ERR("Failed to copy dev name, errno %d\n", ret);
+        }
     }
 
   //* We have it, now populate it with driver specific information. */

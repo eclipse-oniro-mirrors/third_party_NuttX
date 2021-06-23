@@ -77,7 +77,7 @@ int foreach_mountpoint(foreach_mountpoint_t handler, void *arg)
            ret = mnt->ops->Statfs(mnt, &statBuf);
            if (ret == OK)
              {
-                (void)handler(mnt->pathName, &statBuf, arg);
+                (void)handler(mnt->devName, mnt->pathName, &statBuf, arg);
              }
         }
     }

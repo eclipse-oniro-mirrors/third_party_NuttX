@@ -48,7 +48,6 @@
 #include <assert.h>
 #include <errno.h>
 #include <assert.h>
-#include <debug.h>
 
 #ifdef LOSCFG_FS_ROMFS
 #include "fs_romfs.h"
@@ -400,7 +399,7 @@ int romfs_fsconfigure(struct romfs_mountpt_s *rm)
 
   /* The root directory entry begins right after the header */
 
-  name              = (FAR const char *)&rm->rm_buffer[ROMFS_VHDR_VOLNAME];
+  name              = (const char *)&rm->rm_buffer[ROMFS_VHDR_VOLNAME];
   rm->rm_rootoffset = ROMFS_ALIGNUP(ROMFS_VHDR_VOLNAME + strlen(name) + 1);
 
   /* and return success */
@@ -523,7 +522,7 @@ int romfs_parsefilename(struct romfs_mountpt_s *rm, uint32_t offset,
         {
           /* Yes.. then this chunk is less than 16 */
 
-          chunklen = strlen((FAR char *)&rm->rm_buffer[ndx]);
+          chunklen = strlen((char *)&rm->rm_buffer[ndx]);
           done     = true;
         }
       else

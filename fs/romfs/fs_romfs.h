@@ -45,9 +45,11 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#include <fs/dirent_fs.h>
-
+#include "fs/dirent_fs.h"
+#include "fs/fs.h"
+#include "fs/file.h"
 #include "disk.h"
+#include "vnode.h"
 
 /****************************************************************************
  * Pre-processor Definitions
@@ -157,7 +159,7 @@ struct romfs_mountpt_s
 
 struct romfs_file_s
 {
-  FAR struct romfs_file_s *rf_next; /* Retained in a singly linked list */
+  struct romfs_file_s *rf_next; /* Retained in a singly linked list */
   uint32_t rf_startoffset;          /* Offset to the start of the file data */
   uint32_t rf_size;                 /* Size of the file in bytes */
   uint32_t rf_cachesector;          /* Current sector in the rf_buffer */
@@ -206,25 +208,25 @@ extern "C"
  * Public Function Prototypes
  ****************************************************************************/
 
-void romfs_semtake(FAR struct romfs_mountpt_s *rm);
-void romfs_semgive(FAR struct romfs_mountpt_s *rm);
-int  romfs_hwread(FAR struct romfs_mountpt_s *rm, FAR uint8_t *buffer,
+void romfs_semtake(struct romfs_mountpt_s *rm);
+void romfs_semgive(struct romfs_mountpt_s *rm);
+int  romfs_hwread(struct romfs_mountpt_s *rm, uint8_t *buffer,
        uint32_t sector, unsigned int nsectors);
-int  romfs_filecacheread(FAR struct romfs_mountpt_s *rm,
-       FAR struct romfs_file_s *rf, uint32_t sector);
-int  romfs_hwconfigure(FAR struct romfs_mountpt_s *rm);
-int  romfs_fsconfigure(FAR struct romfs_mountpt_s *rm);
-int  romfs_checkmount(FAR struct romfs_mountpt_s *rm);
-int  romfs_finddirentry(FAR struct romfs_mountpt_s *rm,
-       FAR struct romfs_dirinfo_s *dirinfo,
-       FAR const char *path);
-int  romfs_parsedirentry(FAR struct romfs_mountpt_s *rm,
-       uint32_t offset, FAR uint32_t *poffset, FAR uint32_t *pnext,
-       FAR uint32_t *pinfo, FAR uint32_t *psize);
-int  romfs_parsefilename(FAR struct romfs_mountpt_s *rm, uint32_t offset,
-       FAR char *pname);
-int  romfs_datastart(FAR struct romfs_mountpt_s *rm, uint32_t offset,
-       FAR uint32_t *start);
+int  romfs_filecacheread(struct romfs_mountpt_s *rm,
+       struct romfs_file_s *rf, uint32_t sector);
+int  romfs_hwconfigure(struct romfs_mountpt_s *rm);
+int  romfs_fsconfigure(struct romfs_mountpt_s *rm);
+int  romfs_checkmount(struct romfs_mountpt_s *rm);
+int  romfs_finddirentry(struct romfs_mountpt_s *rm,
+       struct romfs_dirinfo_s *dirinfo,
+       const char *path);
+int  romfs_parsedirentry(struct romfs_mountpt_s *rm,
+       uint32_t offset, uint32_t *poffset, uint32_t *pnext,
+       uint32_t *pinfo, uint32_t *psize);
+int  romfs_parsefilename(struct romfs_mountpt_s *rm, uint32_t offset,
+       char *pname);
+int  romfs_datastart(struct romfs_mountpt_s *rm, uint32_t offset,
+       uint32_t *start);
 int romfs_searchdir(struct romfs_mountpt_s *rm,
        const char *entryname, int entrylen, uint32_t firstoffset,
        struct romfs_dirinfo_s *dirinfo);

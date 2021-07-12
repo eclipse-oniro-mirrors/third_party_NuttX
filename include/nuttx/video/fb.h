@@ -68,7 +68,7 @@
 #define FB_FMT_GREY           FB_FMT_Y8 /* BPP=8 */
 #define FB_FMT_Y800           FB_FMT_Y8 /* BPP=8 */
 
-#define FB_ISMONO(f)          ((f) >= FB_FMT_Y4) && (f) <= FB_FMT_Y16)
+#define FB_ISMONO(f)          ((f) >= FB_FMT_Y4 && (f) <= FB_FMT_Y16)
 
 /* RGB video formats ********************************************************/
 
@@ -112,7 +112,7 @@
 #define FB_FMT_RGBT16         22          /* BPP=16 */
 #define FB_FMT_RGBT32         23          /* BPP=32 */
 
-#define FB_ISRGB(f)           ((f) >= FB_FMT_RGB1) && (f) <= FB_FMT_RGBT32)
+#define FB_ISRGB(f)           ((f) >= FB_FMT_RGB1 && (f) <= FB_FMT_RGBT32)
 
 /* Packed YUV Formats *******************************************************/
 
@@ -150,7 +150,7 @@
 #define FB_FMT_Y42T           44          /* BPP=16  UYVY LSB for transparency */
 #define FB_FMT_YUVP           45          /* BPP=24? YCbCr 4:2:2 Y0U0Y1V0 order */
 
-#define FB_ISYUVPACKED(f)     ((f) >= FB_FMT_AYUV) && (f) <= FB_FMT_YUVP)
+#define FB_ISYUVPACKED(f)     ((f) >= FB_FMT_AYUV && (f) <= FB_FMT_YUVP)
 
 /* Packed Planar YUV Formats ************************************************/
 
@@ -428,7 +428,7 @@ struct fb_cmap_s
 struct fb_cursorimage_s
 {
   fb_coord_t     width;    /* Width of the cursor image in pixels */
-  fb_coord_t     height    /* Height of the cursor image in pixels */
+  fb_coord_t     height;   /* Height of the cursor image in pixels */
   const uint8_t *image;    /* Pointer to image data */
 };
 #endif

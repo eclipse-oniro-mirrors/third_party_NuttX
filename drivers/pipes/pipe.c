@@ -223,6 +223,37 @@ static int pipe_close(struct file *filep)
  *
  ****************************************************************************/
 
+static void UpdateDev(struct pipe_dev_s *dev)
+{
+  int ret;
+  struct Vnode *vnode = NULL;
+  struct pipe_dev_s *olddev = NULL;
+  struct drv_data *data = NULL;
+
+  VnodeHold();
+  ret = VnodeLookup(dev->name, &vnode, 0);
+  if (ret != 0)
+    {
+      VnodeDrop();
+      PRINT_ERR("[%s,%d] failed. err: %d\n", __FUNCTION__, __LINE__, ret);
+      return;
+    }
+  data = (struct drv_data *)vnode->data;
+  olddev = (struct pipe_dev_s *)data->priv;
+  if (olddev != NULL)
+    {
+      if (olddev->d_buffer != NULL)
+        {
+          free(olddev->d_buffer);
+          olddev->d_buffer = NULL;
+        }
+      pipecommon_freedev(olddev);
+    }
+  data->priv = dev;
+  VnodeDrop();
+  return;
+}
+
 int pipe(int fd[2])
 {
   struct pipe_dev_s *dev = NULL;
@@ -256,22 +287,22 @@ int pipe(int fd[2])
 
   snprintf_s(devname, sizeof(devname), sizeof(devname) - 1, "/dev/pipe%d", pipeno);
 
+  /* No.. Allocate and initialize a new device structure instance */
+
+  dev = pipecommon_allocdev(bufsize, devname);
+  if (!dev)
+    {
+      (void)sem_post(&g_pipesem);
+      errcode = ENOMEM;
+      goto errout_with_pipe;
+    }
+
+  dev->d_pipeno = pipeno;
+
   /* Check if the pipe device has already been created */
 
   if ((g_pipecreated & (1 << pipeno)) == 0)
     {
-      /* No.. Allocate and initialize a new device structure instance */
-
-      dev = pipecommon_allocdev(bufsize, devname);
-      if (!dev)
-        {
-          (void)sem_post(&g_pipesem);
-          errcode = ENOMEM;
-          goto errout_with_pipe;
-        }
-
-      dev->d_pipeno = pipeno;
-
       /* Register the pipe device */
 
       ret = register_driver(devname, &pipe_fops, 0660, (void *)dev);
@@ -286,7 +317,10 @@ int pipe(int fd[2])
 
        g_pipecreated |= (1 << pipeno);
     }
-
+  else
+    {
+       UpdateDev(dev);
+    }
   (void)sem_post(&g_pipesem);
 
   /* Get a write file descriptor */

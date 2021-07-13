@@ -826,6 +826,8 @@ int vfs_nfs_mount(struct Mount *mnt, struct Vnode *device, const void *data)
   (void)memcpy_s(&(root->n_fhandle), root->n_fhsize, &(nmp->nm_fh), nmp->nm_fhsize);
   mnt->vnodeCovered = vp;
   mnt->data = nmp;
+  root->n_next = nmp->nm_head;
+  nmp->nm_head = root;
 
   ret = vfs_nfs_stat_internal(nmp, root);
   if (ret == OK)
@@ -874,6 +876,8 @@ int vfs_nfs_lookup(struct Vnode *parent, const char *path, int len, struct Vnode
   memcpy_s(&(nfs_node->n_fhandle), nfs_node->n_fhsize, &(fhandle.handle), fhandle.length);
   nfs_node->n_name = zalloc(sizeof(filename));
   memcpy_s(nfs_node->n_name, (len + 1), filename, sizeof(filename));
+  nfs_node->n_next = nmp->nm_head;
+  nmp->nm_head = nfs_node;
 
   /* Save the file attributes */
   nfs_attrupdate(nfs_node, &obj_attributes);
@@ -1515,6 +1519,8 @@ int vfs_nfs_mkdir(struct Vnode *parent, const char *dirname, mode_t mode, struct
   memcpy_s(&(target_node->n_fhandle), target_node->n_fhsize, &(fhandle.handle), fhandle.length);
   target_node->n_name = zalloc(sizeof (dirname));
   memcpy_s(target_node->n_name, sizeof(dirname), dirname, sizeof (dirname));
+  target_node->n_next = nmp->nm_head;
+  nmp->nm_head = target_node;
 
   /* Save the file attributes */
   nfs_attrupdate(target_node, &obj_attributes);

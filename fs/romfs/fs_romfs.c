@@ -615,6 +615,7 @@ int romfs_bind(struct Mount *mnt, struct Vnode *blkDriver, const void *data)
 
   /* Get the hardware configuration and setup buffering appropriately */
 
+  rm->rm_buffer = (uint8_t *)data;
   ret = romfs_hwconfigure(rm);
   if (ret)
     {

@@ -345,21 +345,18 @@ int romfs_hwconfigure(struct romfs_mountpt_s *rm)
 {
   uint32_t total_size;
 
-  rm->rm_buffer = (uint8_t *)DMA_TO_VMM_ADDR(RAMDISK_ADDR);
+  if (!rm->rm_buffer)
+    {
+      return -ENOMEM;
+    }
+
+
   total_size = romfs_devread32(rm, ROMFS_VHDR_SIZE);
 
   rm->rm_hwnsectors = total_size;
   rm->rm_hwsectorsize = 1;
   rm->rm_cachesector = (uint32_t)-1;
   rm->rm_volsize = total_size;
-
-  rm->rm_buffer = (uint8_t *)malloc(total_size);
-  if (!rm->rm_buffer)
-    {
-      return -ENOMEM;
-    }
-
-  memcpy(rm->rm_buffer, (void *)DMA_TO_VMM_ADDR(RAMDISK_ADDR), total_size);
 
   return OK;
 }

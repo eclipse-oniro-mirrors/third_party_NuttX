@@ -2407,6 +2407,12 @@ static void tmpfs_stat_common(FAR struct tmpfs_object_s *to,
   buf->st_atime   = to->to_atime;
   buf->st_mtime   = to->to_mtime;
   buf->st_ctime   = to->to_ctime;
+
+  /* Adapt to kstat member "long tv_sec" */
+  buf->__st_atim32.tv_sec = (long)to->to_atime;
+  buf->__st_mtim32.tv_sec = (long)to->to_mtime;
+  buf->__st_ctim32.tv_sec = (long)to->to_ctime;
+
 }
 
 /****************************************************************************

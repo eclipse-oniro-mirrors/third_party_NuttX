@@ -38,6 +38,7 @@ int do_link(int oldfd, const char *oldpath, int newfd, const char *newpath, int 
   struct Vnode *new_parent_vnode = NULL;
   struct Vnode *new_vnode = NULL;
   struct Vnode *old_vnode = NULL;
+  struct Mount *mount = NULL;
   char *fulloldpath = NULL;
   char *fullnewpath = NULL;
   char *newname = NULL;
@@ -89,6 +90,13 @@ int do_link(int oldfd, const char *oldpath, int newfd, const char *newpath, int 
         {
           goto errout_with_vnode;
         }
+    }
+
+  mount = old_vnode->originMount;
+  if ((mount != NULL) && (mount->mountFlags & MS_RDONLY))
+    {
+      ret = -EROFS;
+      goto errout_with_vnode;
     }
 
   if (old_vnode->type != VNODE_TYPE_REG && old_vnode->type != VNODE_TYPE_LNK)

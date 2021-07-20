@@ -54,6 +54,7 @@ int do_mkdir(int dirfd, const char *pathname, mode_t mode)
 {
   struct Vnode *parentVnode = NULL;
   struct Vnode *vnode = NULL;
+  struct Mount *mount = NULL;
   int ret;
   char *fullpath = NULL;
   char *relativepath = NULL;
@@ -109,6 +110,13 @@ int do_mkdir(int dirfd, const char *pathname, mode_t mode)
       ret = -ENOENT;
       goto errout_with_lock;
     }
+  mount = parentVnode->originMount;
+  if ((mount != NULL) && (mount->mountFlags & MS_RDONLY))
+    {
+      ret = -EROFS;
+      goto errout_with_lock;
+    }
+
   parentVnode->useCount++;
 
   if (VfsVnodePermissionCheck(parentVnode, (WRITE_OP | EXEC_OP)))

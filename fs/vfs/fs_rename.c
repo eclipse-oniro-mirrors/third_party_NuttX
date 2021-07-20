@@ -58,6 +58,10 @@ static int check_rename_target(struct Vnode *old_vnode, struct Vnode *old_parent
     {
       return -ENOENT;
     }
+  if ((new_parent_vnode->originMount) && (new_parent_vnode->originMount->mountFlags & MS_RDONLY))
+    {
+      return -EROFS;
+    }
   if (old_vnode->type != VNODE_TYPE_DIR && old_vnode->type != VNODE_TYPE_REG)
     {
       return -EACCES;

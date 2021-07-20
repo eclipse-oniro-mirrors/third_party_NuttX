@@ -93,6 +93,7 @@ int do_symlink(const char *target, int newfd, const char *path)
   struct Vnode *new_vnode = NULL;
   char *fullpath = NULL;
   char *newname = NULL;
+  struct Mount *mount = NULL;
   int ret;
 
   if (!path)
@@ -132,6 +133,12 @@ int do_symlink(const char *target, int newfd, const char *path)
   if (!parent_vnode->vop || !parent_vnode->vop->Symlink)
     {
       ret = -ENOSYS;
+      goto errout_with_vnode;
+    }
+  mount = parent_vnode->originMount;
+  if ((mount != NULL) && (mount->mountFlags & MS_RDONLY))
+    {
+      ret = -EROFS;
       goto errout_with_vnode;
     }
 

@@ -177,7 +177,8 @@ int fp_open(int dirfd, const char *path, int oflags, mode_t mode)
           goto errout;
         }
 #ifdef LOSCFG_FS_VFS_BLOCK_DEVICE
-      if (vnode->type == VNODE_TYPE_BLK) {
+      if (vnode->type == VNODE_TYPE_BLK)
+        {
           VnodeDrop();
           fd = block_proxy(fullpath, oflags);
           if (fd < 0)
@@ -186,8 +187,15 @@ int fp_open(int dirfd, const char *path, int oflags, mode_t mode)
               goto errout;
             }
          return fd;
-      }
+        }
 #endif
+      if ((vnode->originMount) && (vnode->originMount->mountFlags & MS_RDONLY) &&
+          (((oflags & O_ACCMODE) != O_RDONLY) || (oflags & O_TRUNC)))
+        {
+          ret = -EROFS;
+          VnodeDrop();
+          goto errout;
+        }
       if ((oflags & O_CREAT) && (oflags & O_EXCL))
         {
           ret = -EEXIST;
@@ -212,6 +220,12 @@ int fp_open(int dirfd, const char *path, int oflags, mode_t mode)
   if ((ret != OK) && (oflags & O_CREAT) && vnode)
     {
       /* if file not exist, but parent dir of the file is exist */
+      if ((vnode->originMount) && (vnode->originMount->mountFlags & MS_RDONLY))
+        {
+          ret = -EROFS;
+          VnodeDrop();
+          goto errout;
+        }
       if (VfsVnodePermissionCheck(vnode, (WRITE_OP | EXEC_OP)))
         {
           ret = -EACCES;

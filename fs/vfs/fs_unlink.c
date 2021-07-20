@@ -45,6 +45,7 @@
 
 #include "vnode.h"
 #include "stdlib.h"
+#include "fs/mount.h"
 
 /****************************************************************************
  * Private Functions
@@ -54,6 +55,11 @@ static int check_target(struct Vnode *vnode)
   if (vnode->type == VNODE_TYPE_DIR)
     {
       return -EISDIR;
+    }
+
+  if ((vnode->originMount) && (vnode->originMount->mountFlags & MS_RDONLY))
+    {
+      return -EROFS;
     }
 
   if (vnode->useCount > 0)

@@ -255,6 +255,7 @@ int mount(const char *source, const char *target,
 #endif
 
   mnt = MountAlloc(mountpt_vnode, (struct MountOps*)mops);
+  mnt->mountFlags = mountflags;
 
   mountpt_vnode->useCount++;
   ret = mops->Mount(mnt, device, data);
@@ -280,7 +281,6 @@ int mount(const char *source, const char *target,
   mnt->vnodeBeCovered->flag |= VNODE_FLAG_MOUNT_ORIGIN;
   mnt->vnodeCovered->flag |= VNODE_FLAG_MOUNT_NEW;
   mnt->ops = mops;
-  mnt->mountFlags = mountflags;
   if (target && (strlen(target) != 0))
     {
       ret = strcpy_s(mnt->pathName, PATH_MAX, target);

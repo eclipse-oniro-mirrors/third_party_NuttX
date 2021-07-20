@@ -46,14 +46,21 @@
 #include "sys/stat.h"
 #include "string.h"
 #include "limits.h"
+#include "fs/mount.h"
 
 /****************************************************************************
  * Private Functions
  ****************************************************************************/
-static int check_target(struct Vnode *vnode, char *name) {
+static int check_target(struct Vnode *vnode, char *name)
+{
   if (vnode == NULL)
     {
       return -ENOENT;
+    }
+
+  if ((vnode->originMount) && (vnode->originMount->mountFlags & MS_RDONLY))
+    {
+      return -EROFS;
     }
 
   if (vnode->type != VNODE_TYPE_DIR)

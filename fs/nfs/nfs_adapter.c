@@ -910,6 +910,12 @@ int vfs_nfs_stat(struct Vnode *node, struct stat *buf)
   buf->st_mtime   = nfs_node->n_mtime;
   buf->st_atime   = nfs_node->n_atime;
   buf->st_ctime   = nfs_node->n_ctime;
+
+  /* Adapt to kstat member "long tv_sec" */
+  buf->__st_mtim32.tv_sec   = (long)nfs_node->n_mtime;
+  buf->__st_atim32.tv_sec   = (long)nfs_node->n_atime;
+  buf->__st_ctim32.tv_sec   = (long)nfs_node->n_ctime;
+
   nfs_mux_release(nmp);
   return OK;
 }

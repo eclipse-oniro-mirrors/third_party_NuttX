@@ -2659,9 +2659,16 @@ static int vfs_nfs_unmount(struct Mount *mnt, struct Vnode **blkDriver)
    * at the list of file structures in the mount structure.  If this list
    * not empty, then there are open files and we cannot unmount now (or a
    * crash is sure to follow).
+   * The root of nfs is the head of the nfsnode list, it will be released later,
+   * so now skip checking it.
    */
+  if (nmp->nm_head == NULL)
+    {
+      error = ENODEV;
+      goto errout_with_mutex;
+    }
 
-  if (nmp->nm_head != NULL || nmp->nm_dir != NULL)
+  if (nmp->nm_head->n_next != NULL || nmp->nm_dir != NULL)
     {
       PRINT_ERR("There are open files: %p or directories: %p\n", nmp->nm_head, nmp->nm_dir);
 

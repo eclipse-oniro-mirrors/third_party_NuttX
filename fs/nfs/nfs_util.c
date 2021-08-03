@@ -49,6 +49,7 @@
 #include "nfs.h"
 #include "nfs_node.h"
 #include "xdr_subs.h"
+#include "nfs.h"
 #undef  OK
 #define OK 0
 
@@ -95,7 +96,7 @@ static inline int nfs_pathsegment(const char **path, char *buffer,
         }
       else if (nbytes >= NAME_MAX)
         {
-          PRINT_ERR("File name segment is too long: %d\n", *path);
+          nfs_debug_error("File name segment is too long: %d\n", *path);
           return ENAMETOOLONG;
         }
       else
@@ -188,7 +189,7 @@ tryagain:
                           request, reqlen, response, resplen);
   if (error != 0)
     {
-      PRINT_ERR("rpcclnt_request failed: %d\n", error);
+      nfs_error("rpcclnt_request failed: %d\n", error);
       return error;
     }
 
@@ -212,7 +213,7 @@ tryagain:
           goto tryagain;
         }
 
-      PRINT_ERR("NFS error %d from server\n", error);
+      nfs_debug_error("NFS error %d from server\n", error);
       return error;
     }
 
@@ -251,7 +252,7 @@ int nfs_lookup(struct nfsmount *nmp, const char *filename,
   namelen = strlen(filename);
   if (namelen > NAME_MAX)
     {
-      PRINT_ERR("Length of the string is too long: %d\n", namelen);
+      nfs_debug_error("Length of the string is too long: %d\n", namelen);
       return E2BIG;
     }
 
@@ -286,7 +287,7 @@ int nfs_lookup(struct nfsmount *nmp, const char *filename,
 
   if (error)
     {
-      PRINT_ERR("nfs_request failed: %d\n", error);
+      nfs_debug_error("nfs_request failed: %d\n", error);
       return error;
     }
 
@@ -303,7 +304,7 @@ int nfs_lookup(struct nfsmount *nmp, const char *filename,
   value = fxdr_unsigned(uint32_t, value);
   if (value > NFSX_V3FHMAX)
     {
-      PRINT_ERR("Bad file handle length: %d\n", value);
+      nfs_debug_error("Bad file handle length: %d\n", value);
       return EIO;
     }
 
@@ -403,7 +404,7 @@ int nfs_findnode(struct nfsmount *nmp, const char *relpath,
         {
           /* The filename segment contains is too long. */
 
-          PRINT_ERR("nfs_pathsegment of \"%s\" failed after \"%s\": %d\n",
+          nfs_debug_error("nfs_pathsegment of \"%s\" failed after \"%s\": %d\n",
                relpath, buffer, error);
           return error;
         }
@@ -413,7 +414,7 @@ int nfs_findnode(struct nfsmount *nmp, const char *relpath,
       error = nfs_lookup(nmp, buffer, fhandle, obj_attributes, dir_attributes);
       if (error != OK)
         {
-          PRINT_ERR("nfs_lookup of \"%s\" failed at \"%s\": %d\n",
+          nfs_debug_error("nfs_lookup of \"%s\" failed at \"%s\": %d\n",
                 relpath, buffer, error);
           return error;
         }
@@ -442,7 +443,7 @@ int nfs_findnode(struct nfsmount *nmp, const char *relpath,
         {
           /* Ooops.. we found something else */
 
-          PRINT_ERR("Intermediate segment \"%s\" of \'%s\" is not a directory\n",
+          nfs_debug_error("Intermediate segment \"%s\" of \'%s\" is not a directory\n",
                buffer, path);
           return ENOTDIR;
         }
@@ -497,7 +498,7 @@ int nfs_finddir(struct nfsmount *nmp, const char *relpath,
         {
           /* The filename segment contains is too long. */
 
-          PRINT_ERR("nfs_pathsegment of \"%s\" failed after \"%s\": %d\n",
+          nfs_debug_error("nfs_pathsegment of \"%s\" failed after \"%s\": %d\n",
                relpath, filename, error);
           return error;
         }
@@ -521,7 +522,7 @@ int nfs_finddir(struct nfsmount *nmp, const char *relpath,
       error = nfs_lookup(nmp, filename, fhandle, attributes, NULL);
       if (error != OK)
         {
-          PRINT_ERR("fs_lookup of \"%s\" failed at \"%s\": %d\n",
+          nfs_debug_error("fs_lookup of \"%s\" failed at \"%s\": %d\n",
                 relpath, filename, error);
           return error;
         }
@@ -533,7 +534,7 @@ int nfs_finddir(struct nfsmount *nmp, const char *relpath,
         {
           /* Ooops.. we found something else */
 
-          PRINT_ERR("Intermediate segment \"%s\" of \'%s\" is not a directory\n",
+          nfs_debug_error("Intermediate segment \"%s\" of \'%s\" is not a directory\n",
                filename, path);
           return ENOTDIR;
         }

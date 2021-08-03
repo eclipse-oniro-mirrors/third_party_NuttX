@@ -55,6 +55,22 @@
 extern "C" {
 #endif /* __cplusplus */
 #endif /* __cplusplus */
+
+/****************************************************************************
+ * Debug
+ ****************************************************************************/
+
+#ifdef NFS_DEBUG
+#define nfs_debug_error(format, ...) PRINT_ERR(format, ##__VA_ARGS__)
+#define nfs_debug_info(format, ...) PRINTK(format, ##__VA_ARGS__)
+#else
+#define nfs_debug_error(...)
+#define nfs_debug_info(...)
+#endif
+
+#define nfs_error(format, ...) PRINT_ERR(format, ##__VA_ARGS__)
+#define nfs_info(format, ...) PRINTK(format, ##__VA_ARGS__)
+
 /****************************************************************************
  * Pre-processor Definitions
  ****************************************************************************/

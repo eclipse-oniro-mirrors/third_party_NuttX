@@ -100,7 +100,7 @@ struct nfsstats nfsstats;
       entry = (struct entry3 *)malloc(sizeof(struct entry3));                 \
       if (entry == NULL)                                                      \
         {                                                                     \
-          PRINT_DEBUG("malloc failed\n");                                           \
+          nfs_debug_info("malloc failed\n");                                           \
           error = ENOMEM;                                                     \
           goto errout_with_memory;                                            \
         }                                                                     \
@@ -205,7 +205,7 @@ static int nfs_fileupdate(struct nfsmount *nmp, char *filename,
 
   if (error != OK)
     {
-      PRINTK("ERROR: nfs_lookup failed returned: %d\n", error);
+      nfs_debug_error("nfs_lookup failed returned: %d\n", error);
       return error;
     }
 
@@ -381,7 +381,7 @@ static void nfs_decode_args(struct nfs_mount_parameters *nprmt,
       nprmt->retry = NFS_MAXREXMIT + 1;  /* Past clip limit */
     }
 
-  /* Get the maximum amount of data that can be transPRINT_ERRed in one packet */
+  /* Get the maximum amount of data that can be transferred in one packet */
 
   if ((argp->sotype == SOCK_DGRAM) != 0)
     {
@@ -389,11 +389,11 @@ static void nfs_decode_args(struct nfs_mount_parameters *nprmt,
     }
   else
     {
-      PRINT_ERR("Only SOCK_DRAM is supported\n");
+      nfs_debug_error("Only SOCK_DRAM is supported\n");
       maxio = NFS_MAXDATA;
     }
 
-  /* Get the maximum amount of data that can be transPRINT_ERRed in one write transfer */
+  /* Get the maximum amount of data that can be transferred in one write transfer */
 
   if ((argp->flags & NFSMNT_WSIZE) != 0 && argp->wsize > 0)
     {
@@ -418,7 +418,7 @@ static void nfs_decode_args(struct nfs_mount_parameters *nprmt,
       nprmt->wsize = MAXBSIZE;
     }
 
-  /* Get the maximum amount of data that can be transPRINT_ERRed in one read transfer */
+  /* Get the maximum amount of data that can be transferred in one read transfer */
 
   if ((argp->flags & NFSMNT_RSIZE) != 0 && argp->rsize > 0)
     {
@@ -443,7 +443,7 @@ static void nfs_decode_args(struct nfs_mount_parameters *nprmt,
       nprmt->rsize = MAXBSIZE;
     }
 
-  /* Get the maximum amount of data that can be transPRINT_ERRed in directory transfer */
+  /* Get the maximum amount of data that can be transferred in directory transfer */
 
   if ((argp->flags & NFSMNT_READDIRSIZE) != 0 && argp->readdirsize > 0)
     {
@@ -543,7 +543,7 @@ int nfs_bind(struct Vnode *blkdriver, const void *data,
   nmp = (struct nfsmount *)malloc(SIZEOF_nfsmount(buflen));
   if (!nmp)
     {
-      PRINT_ERR("Failed to allocate mountpoint structure\n");
+      nfs_debug_error("Failed to allocate mountpoint structure\n");
       return -ENOMEM;
     }
 
@@ -598,14 +598,14 @@ int nfs_bind(struct Vnode *blkdriver, const void *data,
       rpc = (struct rpcclnt *)malloc(sizeof(struct rpcclnt));
       if (!rpc)
         {
-          PRINT_ERR("Failed to allocate rpc structure\n");
+          nfs_debug_error("Failed to allocate rpc structure\n");
           error = ENOMEM;
           goto bad;
         }
 
       (void)memset_s(rpc, sizeof(struct rpcclnt), 0, sizeof(struct rpcclnt));
 
-      PRINT_INFO("Connecting\n");
+      nfs_debug_info("Connecting\n");
 
       /* Translate nfsmnt flags -> rpcclnt flags */
 
@@ -620,7 +620,7 @@ int nfs_bind(struct Vnode *blkdriver, const void *data,
       error = rpcclnt_connect(nmp->nm_rpcclnt);
       if (error != OK)
         {
-          PRINTK("ERROR: nfs_connect failed: %d\n", error);
+          nfs_debug_error("nfs_connect failed: %d\n", error);
           goto bad;
         }
     }
@@ -643,7 +643,7 @@ int nfs_bind(struct Vnode *blkdriver, const void *data,
                       (void *)&resok, sizeof(struct rpc_reply_getattr));
   if (error)
     {
-      PRINT_ERR("nfs_request failed: %d\n", error);
+      nfs_debug_error("nfs_request failed: %d\n", error);
       goto bad;
     }
 
@@ -655,7 +655,7 @@ int nfs_bind(struct Vnode *blkdriver, const void *data,
 
   *handle = (void *)nmp;
 
-  PRINT_INFO("Successfully mounted\n");
+  nfs_debug_info("Successfully mounted\n");
   return OK;
 
 bad:
@@ -737,7 +737,7 @@ int nfs_mount(const char *server_ip_and_path, const char *mount_path,
   server_ip_addr = (char *)malloc(pos + 1);
   if (server_ip_addr == NULL)
     {
-      PRINTK("malloc failure\n");
+      nfs_debug_info("malloc failure\n");
       set_errno(ENOMEM);
       goto nfs_mount_out;
     }
@@ -934,7 +934,7 @@ int vfs_nfs_opendir(struct Vnode *node, struct fs_dirent_s *dir)
   ret = nfs_checkmount(nmp);
   if (ret != OK) {
       ret = -ret;
-      PRINTK("ERROR: nfs_checkmount failed: %d\n", ret);
+      nfs_debug_error("nfs_checkmount failed: %d\n", ret);
       goto errout_with_mutex;
   }
   nfs_dir = (struct nfsdir_s *)malloc(sizeof(struct nfsdir_s));
@@ -990,7 +990,7 @@ int vfs_nfs_readdir(struct Vnode *node, struct fs_dirent_s *dir)
   error = nfs_checkmount(nmp);
   if (error != OK)
     {
-      PRINTK("ERROR: nfs_checkmount failed: %d\n", error);
+      nfs_debug_error("nfs_checkmount failed: %d\n", error);
       goto errout_with_mutex;
     }
 
@@ -1052,7 +1052,7 @@ int vfs_nfs_readdir(struct Vnode *node, struct fs_dirent_s *dir)
 
               if (error != OK)
                 {
-                  PRINTK("ERROR: nfs_request failed: %d\n", error);
+                  nfs_debug_error("nfs_request failed: %d\n", error);
                   goto errout_with_mutex;
                 }
 
@@ -1247,7 +1247,7 @@ int vfs_nfs_readdir(struct Vnode *node, struct fs_dirent_s *dir)
       error = nfs_lookup(nmp, dir->fd_dir[i].d_name, &fhandle, &obj_attributes, NULL);
       if (error != OK)
       {
-        PRINTK("ERROR: nfs_lookup failed: %d\n", error);
+        nfs_debug_error("nfs_lookup failed: %d\n", error);
         goto errout_with_memory;
       }
 
@@ -1320,7 +1320,7 @@ int vfs_nfs_rename(struct Vnode *from_vnode, struct Vnode *to_parent,
   error = nfs_checkmount(nmp);
   if (error != OK)
     {
-      PRINTK("ERROR: nfs_checkmount failed: %d\n", error);
+      nfs_debug_error("nfs_checkmount failed: %d\n", error);
       goto errout_with_mutex;
     }
 
@@ -1377,7 +1377,7 @@ int vfs_nfs_rename(struct Vnode *from_vnode, struct Vnode *to_parent,
       (void *)nmp->nm_iobuffer, nmp->nm_buflen);
   if (error != OK)
     {
-      PRINTK("ERROR: nfs_request returned: %d\n", error);
+      nfs_debug_error("nfs_request returned: %d\n", error);
       goto errout_with_mutex;
     }
 
@@ -1385,7 +1385,7 @@ int vfs_nfs_rename(struct Vnode *from_vnode, struct Vnode *to_parent,
   if (error != OK)
     {
       error = -error;
-      PRINTK("ERROR: nfs_rename not finish\n");
+      nfs_debug_error("nfs_rename not finish\n");
       goto errout_with_mutex;
     }
   vfs_nfs_reclaim(from_vnode);
@@ -1422,7 +1422,7 @@ int vfs_nfs_mkdir(struct Vnode *parent, const char *dirname, mode_t mode, struct
   error = nfs_checkmount(nmp);
   if (error != OK)
     {
-      PRINTK("ERROR: nfs_checkmount: %d\n", error);
+      nfs_debug_error("nfs_checkmount: %d\n", error);
       goto errout_with_mutex;
     }
 
@@ -1503,7 +1503,7 @@ int vfs_nfs_mkdir(struct Vnode *parent, const char *dirname, mode_t mode, struct
       (void *)nmp->nm_iobuffer, nmp->nm_buflen);
   if (error)
     {
-      PRINTK("ERROR: nfs_request failed: %d\n", error);
+      nfs_debug_error("nfs_request failed: %d\n", error);
       goto errout_with_mutex;
     }
 
@@ -1572,7 +1572,7 @@ int vfs_nfs_write(struct file *filep, const char *buffer, size_t buflen)
   error = nfs_checkmount(nmp);
   if (error != OK)
     {
-      PRINTK("ERROR: nfs_checkmount failed: %d\n", error);
+      nfs_debug_error("nfs_checkmount failed: %d\n", error);
       goto errout_with_mutex;
     }
 
@@ -1779,7 +1779,7 @@ off_t vfs_nfs_seek(struct file *filep, off_t offset, int whence)
   error = nfs_checkmount(nmp);
   if (error != OK)
     {
-      PRINTK("nfs_checkmount failed: %d\n", error);
+      nfs_debug_info("nfs_checkmount failed: %d\n", error);
       goto errout_with_mutex;
     }
 
@@ -1858,7 +1858,7 @@ ssize_t vfs_nfs_read(struct file *filep, char *buffer, size_t buflen)
   error = nfs_checkmount(nmp);
   if (error != OK)
     {
-      PRINTK("ERROR: nfs_checkmount failed: %d\n", error);
+      nfs_debug_error("nfs_checkmount failed: %d\n", error);
       goto errout_with_mutex;
     }
 
@@ -1870,7 +1870,7 @@ ssize_t vfs_nfs_read(struct file *filep, char *buffer, size_t buflen)
   error = nfs_fileupdate(nmp, np->n_name, &parent_fhandle, np);
   if (error != OK)
     {
-      PRINTK("nfs_fileupdate failed: %d\n", error);
+      nfs_debug_info("nfs_fileupdate failed: %d\n", error);
       goto errout_with_mutex;
     }
 
@@ -1937,7 +1937,7 @@ ssize_t vfs_nfs_read(struct file *filep, char *buffer, size_t buflen)
           (void *)nmp->nm_iobuffer, nmp->nm_buflen);
       if (error)
         {
-          PRINTK("ERROR: nfs_request failed: %d\n", error);
+          nfs_debug_error("nfs_request failed: %d\n", error);
           goto errout_with_mutex;
         }
 
@@ -1993,7 +1993,7 @@ int vfs_nfs_create(struct Vnode *parent, const char *filename, int mode, struct 
   error = nfs_checkmount(nmp);
   if (error != OK)
     {
-      PRINTK("ERROR: nfs_checkmount failed: %d\n", error);
+      nfs_debug_error("nfs_checkmount failed: %d\n", error);
       goto errout_with_mutex;
     }
   ptr    = (uint32_t *)&nmp->nm_msgbuffer.create.create;
@@ -2102,7 +2102,7 @@ int vfs_nfs_create(struct Vnode *parent, const char *filename, int mode, struct 
   tmp = *ptr++;  /* handle_follows */
   if (!tmp)
     {
-      PRINTK("ERROR: no file handle follows\n");
+      nfs_debug_error("no file handle follows\n");
       error = EINVAL;
       goto errout_with_mutex;
     }
@@ -2120,7 +2120,7 @@ int vfs_nfs_create(struct Vnode *parent, const char *filename, int mode, struct 
   tmp = *ptr;  /* handle_follows */
   if (!tmp)
     {
-      PRINTK("WARNING: no file attributes\n");
+      nfs_debug_info("WARNING: no file attributes\n");
     }
   else
     {
@@ -2183,7 +2183,7 @@ int vfs_nfs_unlink(struct Vnode *parent, struct Vnode *target, const char *filen
   error = nfs_checkmount(nmp);
   if (error != OK)
     {
-      PRINTK("ERROR: nfs_checkmount failed: %d\n", error);
+      nfs_debug_error("nfs_checkmount failed: %d\n", error);
       goto errout_with_mutex;
     }
 
@@ -2192,7 +2192,7 @@ int vfs_nfs_unlink(struct Vnode *parent, struct Vnode *target, const char *filen
 
   if (target_node->n_type == NFDIR)
     {
-      PRINTK("ERROR: try to remove a directory\n");
+      nfs_debug_error("try to remove a directory\n");
       error = EISDIR;
       goto errout_with_mutex;
     }
@@ -2246,7 +2246,7 @@ int vfs_nfs_rmdir(struct Vnode *parent, struct Vnode *target, const char *dirnam
   error = nfs_checkmount(nmp);
   if (error != OK)
     {
-      PRINTK("ERROR: nfs_checkmount failed: %d\n", error);
+      nfs_debug_error("nfs_checkmount failed: %d\n", error);
       goto errout_with_mutex;
     }
 
@@ -2255,7 +2255,7 @@ int vfs_nfs_rmdir(struct Vnode *parent, struct Vnode *target, const char *dirnam
 
   if (target_node->n_type != NFDIR)
     {
-      PRINTK("ERROR: try to remove a non-dir\n");
+      nfs_debug_error("try to remove a non-dir\n");
       return -ENOTDIR;
     }
 
@@ -2500,7 +2500,7 @@ int vfs_nfs_statfs(struct Mount *mountpt, struct statfs *sbp)
   error = nfs_checkmount(nmp);
   if (error != OK)
     {
-      PRINTK("ERROR: nfs_checkmount failed: %d\n", error);
+      nfs_debug_error("nfs_checkmount failed: %d\n", error);
       goto errout_with_mutex;
     }
 
@@ -2511,7 +2511,7 @@ int vfs_nfs_statfs(struct Mount *mountpt, struct statfs *sbp)
   error = nfs_fsinfo(nmp);
   if (error)
     {
-      PRINTK("ERROR: nfs_fsinfo failed: %d\n", error);
+      nfs_debug_error("nfs_fsinfo failed: %d\n", error);
       goto errout_with_mutex;
     }
 
@@ -2632,7 +2632,7 @@ int vfs_nfs_truncate(struct Vnode *node, off_t length)
   if (error != OK)
     {
       nfs_mux_release(nmp);
-      PRINTK("ERROR: nfs_request failed: %d\n", error);
+      nfs_debug_error("nfs_request failed: %d\n", error);
       return -error;
     }
 
@@ -2670,7 +2670,7 @@ static int vfs_nfs_unmount(struct Mount *mnt, struct Vnode **blkDriver)
 
   if (nmp->nm_head->n_next != NULL || nmp->nm_dir != NULL)
     {
-      PRINT_ERR("There are open files: %p or directories: %p\n", nmp->nm_head, nmp->nm_dir);
+      nfs_debug_error("There are open files: %p or directories: %p\n", nmp->nm_head, nmp->nm_dir);
 
       /* This implementation currently only supports unmounting if there are
        * no open file references.
@@ -2685,7 +2685,7 @@ static int vfs_nfs_unmount(struct Mount *mnt, struct Vnode **blkDriver)
   error = rpcclnt_umount(nmp->nm_rpcclnt);
   if (error)
     {
-      PRINT_ERR("rpcclnt_umount failed: %d\n", error);
+      nfs_debug_error("rpcclnt_umount failed: %d\n", error);
       goto errout_with_mutex;
     }
 

@@ -751,7 +751,7 @@ static void copy_fd_table(struct fd_table_s *new_fdt, struct fd_table_s *old_fdt
 #if defined(LOSCFG_COMPAT_POSIX)
           if ((sysFd >= MQUEUE_FD_OFFSET) && (sysFd < (MQUEUE_FD_OFFSET + CONFIG_NQUEUE_DESCRIPTORS)))
             {
-              mqueue_refer(sysFd);
+              MqueueRefer(sysFd);
             }
 #endif
 

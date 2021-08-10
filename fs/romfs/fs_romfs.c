@@ -304,6 +304,63 @@ errout_with_semaphore:
 }
 
 /****************************************************************************
+ * Name: romfs_readpage
+ ****************************************************************************/
+
+static ssize_t romfs_readpage(struct Vnode *vnode, char *buffer, off_t off)
+{
+  size_t    bytesleft;
+  int       ret = 0;
+  int       buflen = PAGE_SIZE;
+  struct romfs_mountpt_s *rm = NULL;
+  struct romfs_file_s    *rf = NULL;
+
+  /* Recover our private data from the struct file instance */
+
+  rf = (struct romfs_file_s *)vnode->data;
+  rm = (struct romfs_mountpt_s *)vnode->originMount->data;
+
+  /* Make sure that the mount is still healthy */
+
+  romfs_semtake(rm);
+  ret = romfs_checkmount(rm);
+  if (ret != OK)
+    {
+      PRINTK("ERROR: romfs_checkmount failed: %d\n", ret);
+      goto errout_with_semaphore;
+    }
+
+  if (off >= rf->rf_size)
+    {
+      ret = -ERANGE;
+      PRINTK("ERROR: readpage out of range, ret: %d.\n", ret);
+      goto errout_with_semaphore;
+    }
+
+  /* Get the number of bytes left in the file */
+
+  bytesleft = rf->rf_size - off;
+
+  /* Truncate read count so that it does not exceed the number
+   * of bytes left in the file.
+   */
+
+  if (buflen > bytesleft)
+    {
+      buflen = bytesleft;
+    }
+
+  LOS_CopyFromKernel(buffer, buflen, &rm->rm_buffer[off], buflen);
+
+  romfs_semgive(rm);
+  return buflen;
+
+errout_with_semaphore:
+  romfs_semgive(rm);
+  return ret;
+}
+
+/****************************************************************************
  * Name: romfs_seek
  ****************************************************************************/
 
@@ -830,6 +887,8 @@ struct VnodeOps g_romfsVops =
 {
   .Lookup = romfs_lookup,
   .Create = NULL,
+  .ReadPage = romfs_readpage,
+  .WritePage = NULL,
   .Rename = NULL,
   .Mkdir = NULL,
   .Getattr = romfs_stat,

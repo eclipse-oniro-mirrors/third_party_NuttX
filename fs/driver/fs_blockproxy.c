@@ -223,11 +223,6 @@ int block_proxy(const char *blkdev, int oflags)
   vnode->type = VNODE_TYPE_BCHR;
   VnodeDrop();
 
-  /* Block char device is no need for file mapping */
-#ifdef LOSCFG_KERNEL_VM
-  (void)remove_mapping(chardev);
-#endif
-
   /* Free the allocate character driver name and return the open file
    * descriptor.
    */

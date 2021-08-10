@@ -158,7 +158,6 @@ static int do_creat(struct Vnode *parentNode, char *fullpath, mode_t mode, struc
 int fp_open(int dirfd, const char *path, int oflags, mode_t mode)
 {
   int ret;
-  int fd;
   int accmode;
   struct file *filep = NULL;
   struct Vnode *vnode = NULL;
@@ -180,7 +179,7 @@ int fp_open(int dirfd, const char *path, int oflags, mode_t mode)
       if (vnode->type == VNODE_TYPE_BLK)
         {
           VnodeDrop();
-          fd = block_proxy(fullpath, oflags);
+          int fd = block_proxy(fullpath, oflags);
           if (fd < 0)
             {
               ret = fd;
@@ -239,6 +238,7 @@ int fp_open(int dirfd, const char *path, int oflags, mode_t mode)
           VnodeDrop();
           goto errout;
         }
+      vnode->filePath = strdup(fullpath);
     }
 
   if (ret != OK)
@@ -273,25 +273,12 @@ int fp_open(int dirfd, const char *path, int oflags, mode_t mode)
         }
     }
 
-  fd = files_allocate(vnode, oflags, 0, NULL, 3); /* 3: file start fd */
-  if (fd < 0)
+  filep = files_allocate(vnode, oflags, 0, NULL, FILE_START_FD);
+    if (filep == NULL)
     {
       ret = -EMFILE;
       goto errout_with_count;
     }
-
-  /* Get the file structure corresponding to the file descriptor. */
-  ret = fs_getfilep(fd, &filep);
-  if (ret < 0)
-    {
-      files_release(fd);
-      ret = -get_errno();
-      goto errout_with_count;
-    }
-
-  filep->f_vnode = vnode;
-  filep->ops = vnode->fop;
-  filep->f_path = fullpath;
 
   if (filep->ops && filep->ops->open)
     {
@@ -300,17 +287,15 @@ int fp_open(int dirfd, const char *path, int oflags, mode_t mode)
 
   if (ret < 0)
     {
-      files_release(fd);
+      files_release(filep->fd);
       goto errout_with_count;
     }
 
-  /* we do not bother to handle the NULL scenario, if so, page-cache feature will not be used
-   * when we do the file fault */
-#ifdef LOSCFG_KERNEL_VM
-  add_mapping(filep, fullpath);
-#endif
-
-  return fd;
+  if (fullpath)
+    {
+      free(fullpath);
+    }
+  return filep->fd;
 
 errout_with_count:
   VnodeHold();

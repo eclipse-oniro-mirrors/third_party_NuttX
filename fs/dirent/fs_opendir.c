@@ -150,7 +150,6 @@ errout:
 int do_opendir(const char *path, int oflags)
 {
   int ret;
-  int fd;
 
   struct Vnode *vp = NULL;
   struct file *filep = NULL;
@@ -197,30 +196,19 @@ int do_opendir(const char *path, int oflags)
   vp->useCount++;
   VnodeDrop();
 
-  /* Associate the vnode with a file structure */
-  fd = files_allocate(vp, oflags, 0, NULL, 3); /* 3: file start fd */
-  if (fd < 0)
+  filep = files_allocate(vp, oflags, 0, NULL, FILE_START_FD);
+  if (filep == NULL)
     {
       ret = -EMFILE;
       goto errout_with_vnode;
     }
-
-  /* Get the file structure corresponding to the file descriptor. */
-  ret = fs_getfilep(fd, &filep);
-  if (ret < 0)
-    {
-      ret = -EPERM;
-      goto errout_with_fd;
-    }
-
-  filep->f_path = (char *)fullpath; /* The mem will free in close(fd); */
 
   /* Allocate a type DIR -- which is little more than an vnode  container. */
   dir = (struct fs_dirent_s *)zalloc(sizeof(struct fs_dirent_s));
   if (dir == NULL)
     {
       ret = -ENOMEM;
-      goto errout_with_fd;
+      goto errout_with_file;
     }
   dir->fd_position = 0;      /* This is the position in the read stream */
 
@@ -237,17 +225,21 @@ int do_opendir(const char *path, int oflags)
   if (ret < 0)
     {
       free(dir);
-      goto errout_with_fd;
+      goto errout_with_file;
     }
 
   dir->fd_root = vp;
   dir->fd_status = DIRENT_MAGIC;
   filep->f_dir = dir;
+  if (fullpath)
+    {
+      free(fullpath);
+    }
 
-  return fd;
+  return filep->fd;
 
-errout_with_fd:
-  files_release(fd);
+errout_with_file:
+  files_release(filep->fd);
 errout_with_vnode:
   VnodeHold();
   vp->useCount--;

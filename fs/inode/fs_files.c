@@ -111,7 +111,6 @@ bool get_bit(int i)
   return false;
 }
 
-
 /****************************************************************************
  * Private Functions
  ****************************************************************************/
@@ -139,6 +138,40 @@ static void _files_semtake(struct filelist *list)
  ****************************************************************************/
 
 #define _files_semgive(list)  (void)sem_post(&list->fl_sem)
+
+void file_hold(struct file *filep)
+{
+  struct filelist *list = sched_getfiles();
+  if (!list)
+    {
+      return;
+    }
+
+  _files_semtake(list);
+  if (filep != NULL)
+    {
+      assert(filep->f_refcount > 0);
+      filep->f_refcount++;
+    }
+  _files_semgive(list);
+}
+
+void file_release(struct file *filep)
+{
+  struct filelist *list = sched_getfiles();
+  if (!list)
+    {
+      return;
+    }
+
+  _files_semtake(list);
+  if (filep != NULL)
+    {
+      assert(filep->f_refcount > 0);
+      filep->f_refcount--;
+    }
+  _files_semgive(list);
+}
 
 /****************************************************************************
  * Name: _files_close
@@ -192,21 +225,10 @@ static int _files_close(struct file *filep)
       VnodeDrop();
     }
 
-  /* Release the path of file */
-
-  free(filep->f_path);
-
   /* Release the file descriptor */
 
-  filep->f_magicnum = 0;
-  filep->f_oflags   = 0;
-  filep->f_pos      = 0;
-  filep->f_path     = NULL;
-  filep->f_priv     = NULL;
-  filep->f_vnode    = NULL;
-  filep->f_refcount = 0;
-  filep->f_mapping  = NULL;
-  filep->f_dir      = NULL;
+  memset(filep, 0, sizeof(struct file));
+  filep->fd = -1;
 
   return ret;
 }
@@ -293,10 +315,7 @@ int file_dup2(struct file *filep1, struct file *filep2)
 {
   struct filelist *list = NULL;
   struct Vnode *vnode_ptr = NULL;
-  char *fullpath = NULL;
-  const char *relpath = NULL;
   int err;
-  int len;
   int ret;
 
   if (!filep1 || !filep1->f_vnode || !filep2)
@@ -331,20 +350,6 @@ int file_dup2(struct file *filep1, struct file *filep2)
       goto errout_with_ret;
     }
 
-  len = strlen(filep1->f_path);
-  if ((len == 0) || (len >= PATH_MAX))
-    {
-      ret = -EINVAL;
-      goto errout_with_ret;
-    }
-
-  fullpath = (char *)zalloc(len + 1);
-  if (fullpath == NULL)
-    {
-      ret = -ENOMEM;
-      goto errout_with_ret;
-    }
-
   /* Increment the reference count on the contained vnode */
 
   vnode_ptr = filep1->f_vnode;
@@ -353,12 +358,11 @@ int file_dup2(struct file *filep1, struct file *filep2)
 
   filep2->f_oflags = filep1->f_oflags;
   filep2->f_pos    = filep1->f_pos;
-  filep2->f_vnode  = vnode_ptr;
+  filep2->f_vnode  = filep1->f_vnode;
   filep2->f_priv   = filep1->f_priv;
-
-  (void)strncpy_s(fullpath, len + 1, filep1->f_path, len);
-  filep2->f_path = fullpath;
-  filep2->f_relpath = relpath;
+  filep2->f_path   = filep1->f_path;
+  filep2->ops      = filep1->ops;
+  filep2->f_refcount = filep1->f_refcount;
 
   /* Call the open method on the file, driver, mountpoint so that it
    * can maintain the correct open counts.
@@ -400,14 +404,8 @@ int file_dup2(struct file *filep1, struct file *filep2)
   /* Handle various error conditions */
 
 errout_with_vnode:
-
-  free(filep2->f_path);
-  filep2->f_oflags  = 0;
-  filep2->f_pos     = 0;
-  filep2->f_vnode   = NULL;
-  filep2->f_priv    = NULL;
-  filep2->f_path    = NULL;
-  filep2->f_relpath = NULL;
+  memset(filep2, 0, sizeof(struct file));
+  filep2->fd = -1;
 
 errout_with_ret:
   err               = -ret;
@@ -418,32 +416,13 @@ errout:
   return VFS_ERROR;
 }
 
-#define FILE_START_FD 3
-
-static inline unsigned int files_magic_generate(void)
-{
-    static unsigned int files_magic = 0;
-    return files_magic++;
-}
-
-/****************************************************************************
- * Name: files_allocate
- *
- * Description:
- *   Allocate a struct files instance and associate it with an inode instance.
- *   Returns the file descriptor == index into the files array.
- *
- ****************************************************************************/
-
-int files_allocate(struct Vnode *vnode_ptr, int oflags, off_t pos, void *priv, int minfd)
+struct file *files_allocate(const struct Vnode *vnode_ptr, int oflags, off_t pos, const void *priv, int minfd)
 {
   struct filelist *list = NULL;
   unsigned int *p = NULL;
   unsigned int mask;
   unsigned int i;
-  struct files_struct *process_files = NULL;
-
-  /* minfd should be a positive number,and 0,1,2 had be distributed to stdin,stdout,stderr */
+  struct file *filep = NULL;
 
   if (minfd < FILE_START_FD)
     {
@@ -463,29 +442,25 @@ int files_allocate(struct Vnode *vnode_ptr, int oflags, off_t pos, void *priv, i
       if ((~(*p) & mask))
         {
           set_bit(i, bitmap);
-          list->fl_files[i].f_oflags   = oflags;
-          list->fl_files[i].f_pos      = pos;
-          list->fl_files[i].f_vnode    = vnode_ptr;
-          list->fl_files[i].f_priv     = priv;
-          list->fl_files[i].f_refcount = 1;
-          list->fl_files[i].f_mapping  = NULL;
-          list->fl_files[i].f_dir      = NULL;
-          list->fl_files[i].f_magicnum = files_magic_generate();
-          process_files = OsCurrProcessGet()->files;
-          if (process_files == NULL)
-            {
-              PRINT_ERR("process files is NULL, %s %d\n", __FUNCTION__ ,__LINE__);
-              _files_semgive(list);
-              return VFS_ERROR;
-            }
+          filep = &list->fl_files[i];
+          filep->f_oflags   = oflags;
+          filep->f_pos      = pos;
+          filep->f_vnode    = (struct Vnode *)vnode_ptr;
+          filep->f_priv     = (void *)priv;
+          filep->f_refcount = 1;
+          filep->f_mapping  = (struct page_mapping *)&vnode_ptr->mapping;
+          filep->f_dir      = NULL;
+          filep->f_path     = vnode_ptr->filePath;
+          filep->fd         = i;
+          filep->ops        = vnode_ptr->fop;
           _files_semgive(list);
-          return (int)i;
+          return filep;
         }
       i++;
     }
 
   _files_semgive(list);
-  return VFS_ERROR;
+  return NULL;
 }
 
 int files_close_internal(int fd, LosProcessCB *processCB)
@@ -525,20 +500,9 @@ int files_close_internal(int fd, LosProcessCB *processCB)
       return -EINVAL;
     }
 
-  /* The filep->f_refcount may not be zero here, when the filep is shared in parent-child processes.
-     so, upon closing the filep in current process, relevant region must be released immediately */
-#ifdef LOSCFG_KERNEL_VM
-  struct file *filep = &list->fl_files[fd];
-
-  OsVmmFileRegionFree(filep, processCB);
-#endif
-
   list->fl_files[fd].f_refcount--;
   if (list->fl_files[fd].f_refcount == 0)
     {
-#ifdef LOSCFG_KERNEL_VM
-      dec_mapping_nolock(filep->f_mapping);
-#endif
       ret = _files_close(&list->fl_files[fd]);
       if (ret == OK)
         {
@@ -585,17 +549,10 @@ void files_release(int fd)
   if (fd >=0 && fd < CONFIG_NFILE_DESCRIPTORS)
     {
       _files_semtake(list);
+      struct file *filep = &list->fl_files[fd];
 
-      list->fl_files[fd].f_magicnum = 0;
-      list->fl_files[fd].f_oflags   = 0;
-      list->fl_files[fd].f_vnode    = NULL;
-      list->fl_files[fd].f_pos      = 0;
-      list->fl_files[fd].f_refcount = 0;
-      list->fl_files[fd].f_path     = NULL;
-      list->fl_files[fd].f_relpath  = NULL;
-      list->fl_files[fd].f_priv     = NULL;
-      list->fl_files[fd].f_mapping  = NULL;
-      list->fl_files[fd].f_dir      = NULL;
+      memset(filep, 0, sizeof(struct file));
+      filep->fd = -1;
       clear_bit(fd, bitmap);
       _files_semgive(list);
     }

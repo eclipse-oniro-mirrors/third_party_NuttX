@@ -280,6 +280,7 @@ int mount(const char *source, const char *target,
     }
   mnt->vnodeBeCovered->flag |= VNODE_FLAG_MOUNT_ORIGIN;
   mnt->vnodeCovered->flag |= VNODE_FLAG_MOUNT_NEW;
+  mnt->vnodeDev = device;
   mnt->ops = mops;
   if (target && (strlen(target) != 0))
     {

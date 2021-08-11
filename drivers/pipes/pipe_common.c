@@ -281,9 +281,9 @@ int pipecommon_open(struct file *filep)
           (void)pipecommon_close(filep);
         }
     }
-
+  VnodeHold();
   vnode->useCount++;
-
+  VnodeDrop();
   return ret;
 }
 
@@ -378,9 +378,9 @@ int pipecommon_close(struct file *filep)
       dev->d_nwriters = 0;
       dev->d_nreaders = 0;
     }
-
+  VnodeHold();
   vnode->useCount--;
-
+  VnodeDrop();
   sem_post(&dev->d_bfsem);
   return OK;
 }

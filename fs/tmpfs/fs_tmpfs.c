@@ -1065,7 +1065,7 @@ ssize_t tmpfs_read(struct file *filep, char *buffer, size_t buflen)
   loff_t startpos;
   loff_t endpos;
 
-  DEBUGASSERT(filep->f_priv != NULL && filep->f_inode != NULL);
+  DEBUGASSERT(filep->f_priv != NULL && filep->f_vnode != NULL);
 
   /* Recover our private data from the struct file instance */
 
@@ -1209,7 +1209,7 @@ ssize_t tmpfs_write(struct file *filep, const char *buffer, size_t buflen)
   int alloc;
   char *data;
 
-  DEBUGASSERT(filep->f_priv != NULL && filep->f_inode != NULL);
+  DEBUGASSERT(filep->f_priv != NULL && filep->f_vnode != NULL);
 
   if (buflen == 0)
     {
@@ -2040,7 +2040,7 @@ int tmpfs_rmdir(struct Vnode *parent, struct Vnode *target, const char *dirname)
   struct tmpfs_directory_s *tdo;
   int ret = 0;
 
-  DEBUGASSERT(parent != NULL && target != NULL && relpath != NULL);
+  DEBUGASSERT(parent != NULL && target != NULL && dirname != NULL);
 
   /* Get the file system structure from the inode reference. */
   fs = parent->originMount->data;

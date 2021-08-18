@@ -122,9 +122,7 @@ struct file_operations_vfs
   int     (*mmap)(struct file* filep, struct VmMapRegion *region);
   /* The two structures need not be common after this point */
 
-#ifndef CONFIG_DISABLE_POLL
   int     (*poll)(struct file *filep, poll_table *fds);
-#endif
   int     (*stat)(struct file *filep, struct stat* st);
   int     (*fallocate)(struct file* filep, int mode, off_t offset, off_t len);
   int     (*fallocate64)(struct file *filep, int mode, off64_t offset, off64_t len);

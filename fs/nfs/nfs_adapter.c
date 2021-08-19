@@ -1414,7 +1414,7 @@ int vfs_nfs_mkdir(struct Vnode *parent, const char *dirname, mode_t mode, struct
 
   /* Sanity checks */
 
-  DEBUGASSERT(mountpt && mountpt->i_private);
+  DEBUGASSERT(parent && parent->data);
 
   /* Check if the mount is still healthy */
 

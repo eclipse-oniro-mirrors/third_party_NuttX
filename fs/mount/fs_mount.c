@@ -62,6 +62,9 @@
 #include "fs/mount.h"
 #include "fs/driver.h"
 #include "fs/fs.h"
+#ifdef LOSCFG_FS_ZPFS
+#include "zpfs.h"
+#endif
 
 
 /* At least one filesystem must be defined, or this file will not compile.
@@ -255,6 +258,19 @@ int mount(const char *source, const char *target,
 #endif
 
   mnt = MountAlloc(mountpt_vnode, (struct MountOps*)mops);
+
+#ifdef LOSCFG_FS_ZPFS
+  if (strcmp(filesystemtype, ZPFS_NAME) == 0)
+    {
+      ret = ZpfsPrepare(source, target, mnt);
+      if (ret < 0)
+        {
+          errcode = ret;
+          goto errout_with_mountpt;
+        }
+    }
+#endif
+
   mnt->mountFlags = mountflags;
 
   mountpt_vnode->useCount++;

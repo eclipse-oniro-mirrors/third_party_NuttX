@@ -91,10 +91,6 @@ int umount(const char *target)
   struct Vnode *covered_vnode = NULL;
   struct Mount *mnt = NULL;
   int ret;
-#ifdef LOSCFG_FS_ZPFS
-  bool isZpfs = false;
-  struct inode zpfsInode;
-#endif
 
   /* Verify required pointer arguments */
 
@@ -144,16 +140,6 @@ int umount(const char *target)
       goto errout;
     }
 
-#ifdef LOSCFG_FS_ZPFS
-  if (IsZpfsFileSystem(mountpt_vnode))
-    {
-      isZpfs = true;
-      zpfsInode.i_private = mountpt_vnode->i_private;
-      zpfsInode.u.i_ops = mountpt_vnode->u.i_ops;
-      zpfsInode.i_flags = mountpt_vnode->i_flags;
-    }
-#endif
-
   /* Release the vnode under the mount point */
   if (fs_in_use(mnt, target))
     {
@@ -183,12 +169,6 @@ int umount(const char *target)
       ; /* block driver operations after umount */
     }
 
-#ifdef LOSCFG_FS_ZPFS
-  if (isZpfs)
-    {
-      ZpfsCleanUp((void*)&zpfsInode, fullpath);
-    }
-#endif
   covered_vnode->newMount = NULL;
   covered_vnode->flag &= ~(VNODE_FLAG_MOUNT_ORIGIN);
   VnodeDrop();

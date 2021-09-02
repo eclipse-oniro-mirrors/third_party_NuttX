@@ -42,7 +42,7 @@
  ************************************************************************************/
 
 #include "gadget/usbdev.h"
-#include "atomic.h"
+#include "asm/atomic.h"
 #include <linux/spinlock.h>
 #include <linux/list.h>
 

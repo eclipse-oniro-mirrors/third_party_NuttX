@@ -57,12 +57,11 @@
  ************************************************************************************/
 
 #include "implementation/global_implementation.h"
-#include "list.h"
-#include "../../../../musl/porting/liteos_a/kernel/include/bits/errno.h"
+#include "linux/list.h"
+#include "errno.h"
 #define CONFIG_USBDEV_COMPOSITE
 #define CONFIG_USBDEV_DMA
 #define FAR
-#define get_errno() (0)
 /************************************************************************************
  * Pre-processor Definitions
  ************************************************************************************/

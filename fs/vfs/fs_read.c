@@ -141,6 +141,11 @@ ssize_t file_read(struct file *filep, void *buf, size_t nbytes)
 
 ssize_t read(int fd, void *buf, size_t nbytes)
 {
+  if (buf == NULL || nbytes < 0)
+    {
+      set_errno(EINVAL);
+      return VFS_ERROR;
+    }
   /* Did we get a valid file descriptor? */
 
 #if CONFIG_NFILE_DESCRIPTORS > 0

@@ -39,6 +39,10 @@ int follow_symlink(int dirfd, const char *path, struct Vnode **vnode, char **ful
   struct Vnode *newvnode = NULL;
   char pathname[PATH_MAX] = {0};
 
+  if (path == NULL) {
+      return -EINVAL;
+  }
+
   (void)strcpy_s(pathname, PATH_MAX, path);
 
   for (int i = 0; i < CONFIG_FS_MAX_LNK_CNT; i++)

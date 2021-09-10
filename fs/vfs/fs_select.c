@@ -120,7 +120,7 @@ int do_select(int nfds, fd_set *readfds, fd_set *writefds,
   int ndx;
   int ret;
 
-  if (nfds < 0)
+  if (nfds < 0 || nfds >= FD_SETSIZE)
     {
       set_errno(EINVAL);
       return VFS_ERROR;

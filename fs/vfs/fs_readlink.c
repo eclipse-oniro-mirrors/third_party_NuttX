@@ -44,7 +44,7 @@ ssize_t do_readlink(int dirfd, const char *path, char *buf, size_t bufsize)
       goto errout;
     }
 
-  if (*path == '\0')
+  if (*path == '\0' || buf == NULL || bufsize < 0)
     {
       ret = -EINVAL;
       goto errout;

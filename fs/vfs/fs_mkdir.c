@@ -144,6 +144,7 @@ int do_mkdir(int dirfd, const char *pathname, mode_t mode)
       // alloc name cache failed is not a critical problem, let it go.
       PRINT_ERR("alloc path cache %s failed\n", dirname);
   }
+  vnode->filePath = strdup(fullpath);
   parentVnode->useCount--;
   VnodeDrop();
 out:

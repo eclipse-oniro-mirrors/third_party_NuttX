@@ -75,12 +75,7 @@
 
 int file_dup(struct file *filep, int minfd)
 {
-  int fd2;
-  int ret;
-  int err,len,rellen;
   struct file *filep2 = NULL;
-  char *fullpath = NULL;
-  char *relpath = NULL;
 
   /* Verify that fd is a valid, open file descriptor */
 
@@ -90,57 +85,17 @@ int file_dup(struct file *filep, int minfd)
       return VFS_ERROR;
     }
 
-  len = strlen(filep->f_path);
-  fullpath = (char *)zalloc(len + 1);
-  if (fullpath == NULL)
-    {
-      set_errno(ENOMEM);
-      return VFS_ERROR;
-    }
-
   /* Then allocate a new file descriptor for the vnode */
 
-  fd2 = files_allocate(filep->f_vnode, filep->f_oflags, filep->f_pos, filep->f_priv, minfd);
-  if (fd2 < 0)
+  filep2 = files_allocate(filep->f_vnode, filep->f_oflags, filep->f_pos, filep->f_priv, minfd);
+  if (filep2 == NULL)
     {
-      free(fullpath);
       set_errno(EMFILE);
       return VFS_ERROR;
     }
+  filep2->f_refcount = filep->f_refcount;
 
-  ret = fs_getfilep(fd2, &filep2);
-
-  (void)strncpy_s(fullpath, len + 1, filep->f_path, len);
-  if (filep->f_relpath != NULL)
-    {
-      rellen = strlen(filep->f_relpath);
-      relpath = (char *)zalloc(rellen + 1);
-      (void)strncpy_s(relpath, rellen + 1, filep->f_relpath, rellen);
-    }
-  filep2->f_path = fullpath;
-  filep2->f_relpath = relpath;
-  filep2->f_priv = filep->f_priv;
-
-  if (ret < 0)
-    {
-      goto errout_with_vnode;
-    }
-
-  return fd2;
-
-errout_with_vnode:
-  clear_fd(fd2);
-  free(fullpath);
-  filep2->f_oflags  = 0;
-  filep2->f_pos     = 0;
-  filep2->f_vnode   = NULL;
-  filep2->f_priv    = NULL;
-  filep2->f_path    = NULL;
-  filep2->f_relpath = NULL;
-  filep2->f_mapping = NULL;
-  err               = -ret;
-  set_errno(err);
-  return VFS_ERROR;
+  return filep2->fd;
 }
 
 /****************************************************************************

@@ -192,9 +192,13 @@ extern int do_rmdir(int dirfd, const char *pathname);
 
 int unlinkat(int dirfd, const char *pathname, int flag)
 {
+  if (pathname == NULL)
+  {
+    return -EINVAL;
+  }
   /* Now flag only support 0 && AT_REMOVEDIR */
   if ((flag & ~AT_REMOVEDIR) != 0)
-    return VFS_ERROR;
+    return -EINVAL;
 
   if (flag & AT_REMOVEDIR)
     return do_rmdir(dirfd, pathname);

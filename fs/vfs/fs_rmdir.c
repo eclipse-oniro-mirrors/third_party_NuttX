@@ -111,6 +111,11 @@ int do_rmdir(int dirfd, const char *pathname)
   char             *name         = NULL;
   int               ret;
 
+  if (pathname == NULL)
+    {
+      return -EINVAL;
+    }
+
   /* Get relative path by dirfd*/
   ret = get_path_from_fd(dirfd, &relativepath);
   if (ret < 0)

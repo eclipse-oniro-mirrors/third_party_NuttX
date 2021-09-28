@@ -210,6 +210,7 @@ int do_rename(int oldfd, const char *oldpath, int newfd, const char *newpath)
   VnodePathCacheFree(old_vnode);
   old_vnode->filePath = strdup(fullnewpath);
   PathCacheAlloc(new_parent_vnode, old_vnode, newname, strlen(newname));
+  old_vnode->parent = new_parent_vnode;
   VnodeDrop();
 
   free(fulloldpath);

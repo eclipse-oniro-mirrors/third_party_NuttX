@@ -64,23 +64,37 @@ extern "C" {
 #define OK 0
 #endif
 
+/* minimal fd allocated for file */
+#define FILE_START_FD 3
+
+struct Vnode;
+
+/* file mapped in VMM pages */
+struct page_mapping {
+  LOS_DL_LIST                           page_list;    /* all pages */
+  SPIN_LOCK_S                           list_lock;    /* lock protecting it */
+  LosMux                                mux_lock;     /* mutex lock */
+  unsigned long                         nrpages;      /* number of total pages */
+  unsigned long                         flags;
+  Atomic                                ref;          /* reference counting */
+  struct Vnode                          *host;        /* owner of this mapping */
+};
+
 /* This is the underlying representation of an open file.  A file
  * descriptor is an index into an array of such types. The type associates
  * the file descriptor to the file state and to a set of vnode operations.
  */
 
-struct Vnode;
-
 struct file
 {
-  unsigned int         f_magicnum;  /* file magic number */
+  unsigned int         f_magicnum;  /* file magic number. -- to be deleted */
   int                  f_oflags;    /* Open mode flags */
   struct Vnode         *f_vnode;    /* Driver interface */
   loff_t               f_pos;       /* File position */
   unsigned long        f_refcount;  /* reference count */
   char                 *f_path;     /* File fullpath */
   void                 *f_priv;     /* Per file driver private data */
-  const char           *f_relpath;  /* realpath */
+  const char           *f_relpath;  /* realpath.  -- to be deleted */
   struct page_mapping  *f_mapping;  /* mapping file to memory */
   void                 *f_dir;      /* DIR struct for iterate the directory if open a directory */
   const struct file_operations_vfs *ops;
@@ -131,26 +145,8 @@ struct file_operations_vfs
   int     (*unlink)(struct Vnode *vnode);
 };
 
-/* file mapped in VMM pages */
-struct page_mapping {
-  LOS_DL_LIST                           page_list;    /* all pages */
-  SPIN_LOCK_S                           list_lock;    /* lock protecting it */
-  LosMux                                mux_lock;     /* mutex lock */
-  unsigned long                         nrpages;      /* number of total pages */
-  unsigned long                         flags;
-  Atomic                                ref;          /* reference counting */
-  struct file                           *host;        /* owner of this mapping */
-};
-
-/* map: full_path(owner) <-> mapping */
-struct file_map {
-  LOS_DL_LIST                           head;
-  LosMux                                lock;         /* lock to protect this mapping */
-  struct page_mapping                   mapping;
-  int                                   name_len;
-  char                                  *rename;
-  char                                  owner[0];     /* owner: full path of file */
-};
+void file_hold(struct file *filep);
+void file_release(struct file *filep);
 
 /****************************************************************************
  * Name: files_initlist
@@ -467,11 +463,11 @@ off64_t file_seek64(struct file *filep, off64_t offset, int whence);
  *
  * Description:
  *   Allocate a struct files instance and associate it with an vnode instance.
- *   Returns the file descriptor == index into the files array.
+ *   Returns the file descriptor pointer.
  *
  ****************************************************************************/
 
-int files_allocate(struct Vnode *vnode, int oflags, off_t pos, void *priv, int minfd);
+struct file *files_allocate(const struct Vnode *vnode_ptr, int oflags, off_t pos, const void *priv, int minfd);
 
 /****************************************************************************
  * Name: files_close

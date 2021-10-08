@@ -208,17 +208,10 @@ int do_rename(int oldfd, const char *oldpath, int newfd, const char *newpath)
     }
   VnodeFree(new_vnode);
   VnodePathCacheFree(old_vnode);
+  old_vnode->filePath = strdup(fullnewpath);
   PathCacheAlloc(new_parent_vnode, old_vnode, newname, strlen(newname));
   old_vnode->parent = new_parent_vnode;
   VnodeDrop();
-  ret = update_file_path(fulloldpath, fullnewpath);
-  if (ret != OK)
-    {
-      PRINT_ERR("rename change file path failed, something bad might happped.\n");
-    }
-  /* Successfully renamed */
-
-  rename_mapping(fulloldpath, fullnewpath);
 
   free(fulloldpath);
   free(fullnewpath);

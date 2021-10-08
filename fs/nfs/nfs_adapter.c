@@ -1764,6 +1764,210 @@ errout_with_mutex:
   return -error;
 }
 
+ssize_t vfs_nfs_writepage(struct Vnode *node, char *buffer, off_t pos, size_t buflen)
+{
+  struct nfsmount       *nmp;
+  struct nfsnode        *np;
+  loff_t                f_pos = pos;
+  size_t                writesize;
+  size_t                bufsize;
+  size_t                byteswritten;
+  size_t                reqlen;
+  uint32_t              *ptr = NULL;
+  uint32_t              tmp;
+  int                   committed = NFSV3WRITE_UNSTABLE;
+  int                   error;
+  char                  *temp_buffer = NULL;
+  struct file_handle    parent_fhandle;
+
+  nmp = (struct nfsmount *)(node->originMount->data);
+  DEBUGASSERT(nmp != NULL);
+
+  /* Make sure that the mount is still healthy */
+
+  nfs_mux_take(nmp);
+  np  = (struct nfsnode *)node->data;
+  error = nfs_checkmount(nmp);
+  if (error != OK)
+    {
+      nfs_debug_error("nfs_checkmount failed: %d\n", error);
+      goto errout_with_mutex;
+    }
+
+  parent_fhandle.length = ((struct nfsnode *)node->parent->data)->n_fhsize;
+  memcpy_s(&(parent_fhandle.handle), parent_fhandle.length,
+      &(((struct nfsnode *)node->parent->data)->n_fhandle),
+      ((struct nfsnode *)node->parent->data)->n_fhsize);
+
+  /* Check if the file size would exceed the range of off_t */
+
+  if (np->n_size + buflen < np->n_size)
+    {
+      error = EFBIG;
+      goto errout_with_mutex;
+    }
+
+  /* writepage cannot exceed the file range */
+
+  if (f_pos >= np->n_size)
+    {
+      error = ERANGE;
+      goto errout_with_mutex;
+    }
+
+  buflen = min(buflen, np->n_size - f_pos);
+
+  /* Allocate memory for data */
+
+  bufsize = (buflen < nmp->nm_wsize) ? buflen : nmp->nm_wsize;
+  temp_buffer = malloc(bufsize);
+  if (temp_buffer == NULL)
+    {
+      error = ENOMEM;
+      goto errout_with_mutex;
+    }
+
+  /* Now loop until we send the entire user buffer */
+
+  writesize = 0;
+  for (byteswritten = 0; byteswritten < buflen; )
+    {
+      /* Make sure that the attempted write size does not exceed the RPC
+       * maximum.
+       */
+
+      writesize = buflen - byteswritten;
+      if (writesize > nmp->nm_wsize)
+        {
+          writesize = nmp->nm_wsize;
+        }
+
+      /* Make sure that the attempted read size does not exceed the IO
+       * buffer size.
+       */
+
+      bufsize = SIZEOF_rpc_call_write(writesize);
+      if (bufsize > nmp->nm_buflen)
+        {
+          writesize -= (bufsize - nmp->nm_buflen);
+        }
+
+      /* Copy a chunk of the user data into the temporary buffer */
+
+      if (LOS_CopyToKernel(temp_buffer, writesize, buffer, writesize) != 0)
+        {
+          error = EINVAL;
+          goto errout_with_memfree;
+        }
+
+      /* Initialize the request.  Here we need an offset pointer to the write
+       * arguments, skipping over the RPC header.  Write is unique among the
+       * RPC calls in that the entry RPC calls messasge lies in the I/O buffer
+       */
+
+      ptr     = (uint32_t *)&((struct rpc_call_write *)
+          nmp->nm_iobuffer)->write;
+      reqlen  = 0;
+
+      /* Copy the variable length, file handle */
+
+      *ptr++  = txdr_unsigned((uint32_t)np->n_fhsize);
+      reqlen += sizeof(uint32_t);
+
+      (void)memcpy_s(ptr, np->n_fhsize, &np->n_fhandle, np->n_fhsize);
+      reqlen += (int)np->n_fhsize;
+      ptr    += uint32_increment((int)np->n_fhsize);
+
+      /* Copy the file offset */
+
+      txdr_hyper((uint64_t)f_pos, ptr);
+      ptr    += 2;
+      reqlen += 2*sizeof(uint32_t);
+
+      /* Copy the count and stable values */
+
+      *ptr++  = txdr_unsigned(writesize);
+      *ptr++  = txdr_unsigned((uint32_t)committed);
+      reqlen += 2*sizeof(uint32_t);
+
+      /* Copy a chunk of the user data into the I/O buffer from temporary buffer */
+
+      *ptr++  = txdr_unsigned(writesize);
+      reqlen += sizeof(uint32_t);
+      error = memcpy_s(ptr, writesize, temp_buffer, writesize);
+      if (error != EOK)
+        {
+          error = ENOBUFS;
+          goto errout_with_memfree;
+        }
+      reqlen += uint32_alignup(writesize);
+
+      /* Perform the write */
+
+      nfs_statistics(NFSPROC_WRITE);
+      error = nfs_request(nmp, NFSPROC_WRITE,
+          (void *)nmp->nm_iobuffer, reqlen,
+          (void *)&nmp->nm_msgbuffer.write,
+          sizeof(struct rpc_reply_write));
+      if (error)
+        {
+          goto errout_with_memfree;
+        }
+
+      /* Get a pointer to the WRITE reply data */
+
+      ptr = (uint32_t *)&nmp->nm_msgbuffer.write.write;
+
+      /* Parse file_wcc.  First, check if WCC attributes follow. */
+
+      tmp = *ptr++;
+      if (tmp != 0)
+        {
+          /* Yes.. WCC attributes follow.  But we just skip over them. */
+
+          ptr += uint32_increment(sizeof(struct wcc_attr));
+        }
+
+      /* Check if normal file attributes follow */
+
+      tmp = *ptr++;
+      if (tmp != 0)
+        {
+          /* Yes.. Update the cached file status in the file structure. */
+
+          nfs_attrupdate(np, (struct nfs_fattr *)ptr);
+          ptr += uint32_increment(sizeof(struct nfs_fattr));
+        }
+
+      /* Get the count of bytes actually written */
+
+      tmp = fxdr_unsigned(uint32_t, *ptr);
+      ptr++;
+
+      if (tmp < 1 || tmp > writesize)
+        {
+          error = EIO;
+          goto errout_with_memfree;
+        }
+
+      writesize = tmp;
+      f_pos += writesize;
+      np->n_fpos = f_pos;
+
+      byteswritten += writesize;
+      buffer       += writesize;
+  }
+
+  free(temp_buffer);
+  nfs_mux_release(nmp);
+  return byteswritten;
+errout_with_memfree:
+  free(temp_buffer);
+errout_with_mutex:
+  nfs_mux_release(nmp);
+  return -error;
+}
+
 off_t vfs_nfs_seek(struct file *filep, off_t offset, int whence)
 {
   struct Vnode *node = filep->f_vnode;
@@ -1828,6 +2032,156 @@ off_t vfs_nfs_seek(struct file *filep, off_t offset, int whence)
   }
   nfs_mux_release(nmp);
   return (off_t)filep->f_pos;
+
+errout_with_mutex:
+  nfs_mux_release(nmp);
+  return -error;
+}
+
+ssize_t vfs_nfs_readpage(struct Vnode *node, char *buffer, off_t pos)
+{
+  struct nfsnode            *np;
+  struct rpc_reply_read     *read_response = NULL;
+  size_t                     readsize;
+  size_t                     tmp;
+  size_t                     bytesread;
+  size_t                     reqlen;
+  uint32_t                  *ptr = NULL;
+  int                        error = 0;
+  struct file_handle         parent_fhandle;
+  int                        buflen = PAGE_SIZE;
+  struct nfsmount *nmp = (struct nfsmount *)(node->originMount->data);
+
+  DEBUGASSERT(nmp != NULL);
+
+  /* Make sure that the mount is still healthy */
+
+  nfs_mux_take(nmp);
+  np  = (struct nfsnode *)node->data;
+  error = nfs_checkmount(nmp);
+  if (error != OK)
+    {
+      nfs_debug_error("nfs_checkmount failed: %d\n", error);
+      goto errout_with_mutex;
+    }
+
+
+  parent_fhandle.length = ((struct nfsnode *)node->parent->data)->n_fhsize;
+  memcpy_s(&(parent_fhandle.handle), parent_fhandle.length,
+      &(((struct nfsnode *)node->parent->data)->n_fhandle),
+      ((struct nfsnode *)node->parent->data)->n_fhsize);
+  error = nfs_fileupdate(nmp, np->n_name, &parent_fhandle, np);
+  if (error != OK)
+    {
+      nfs_debug_info("nfs_fileupdate failed: %d\n", error);
+      goto errout_with_mutex;
+    }
+
+  /* Get the number of bytes left in the file and truncate read count so that
+   * it does not exceed the number of bytes left in the file.
+   */
+
+  if (pos >= np->n_size) {
+      error = EFAULT;
+      nfs_debug_info("readpage out of file range: %d\n", error);
+      goto errout_with_mutex;
+  }
+
+  tmp = np->n_size - pos;
+  if (buflen > tmp)
+    {
+      buflen = tmp;
+    }
+
+  /* Now loop until we fill the user buffer (or hit the end of the file) */
+
+  for (bytesread = 0; bytesread < buflen; )
+    {
+      /* Make sure that the attempted read size does not exceed the RPC maximum */
+
+      readsize = buflen - bytesread;
+      if (readsize > nmp->nm_rsize)
+        {
+          readsize = nmp->nm_rsize;
+        }
+
+      /* Make sure that the attempted read size does not exceed the IO buffer size */
+
+      tmp = SIZEOF_rpc_reply_read(readsize);
+      if (tmp > nmp->nm_buflen)
+        {
+          readsize -= (tmp - nmp->nm_buflen);
+        }
+
+      /* Initialize the request */
+
+      ptr     = (uint32_t *)&nmp->nm_msgbuffer.read.read;
+      reqlen  = 0;
+
+      /* Copy the variable length, file handle */
+
+      *ptr++  = txdr_unsigned((uint32_t)np->n_fhsize);
+      reqlen += sizeof(uint32_t);
+
+      memcpy_s(ptr, np->n_fhsize, &np->n_fhandle, np->n_fhsize);
+      reqlen += (int)np->n_fhsize;
+      ptr    += uint32_increment((int)np->n_fhsize);
+
+      /* Copy the file offset */
+
+      txdr_hyper((uint64_t)pos, ptr);
+      ptr += 2;
+      reqlen += 2*sizeof(uint32_t);
+
+      /* Set the readsize */
+
+      *ptr = txdr_unsigned(readsize);
+      reqlen += sizeof(uint32_t);
+
+      /* Perform the read */
+
+      nfs_statistics(NFSPROC_READ);
+      error = nfs_request(nmp, NFSPROC_READ,
+          (void *)&nmp->nm_msgbuffer.read, reqlen,
+          (void *)nmp->nm_iobuffer, nmp->nm_buflen);
+      if (error)
+        {
+          nfs_debug_error("nfs_request failed: %d\n", error);
+          goto errout_with_mutex;
+        }
+
+      /* The read was successful.  Get a pointer to the beginning of the NFS
+       * response data.
+       */
+
+      read_response = (struct rpc_reply_read *)nmp->nm_iobuffer;
+      readsize = fxdr_unsigned(uint32_t, read_response->read.hdr.count);
+
+      /* Copy the read data into the user buffer */
+
+      if (LOS_CopyFromKernel(buffer, buflen, (const void *)read_response->read.data, readsize) != 0)
+        {
+          error = EINVAL;
+          goto errout_with_mutex;
+        }
+
+      /* Update the read state data */
+
+      pos          += readsize;
+      np->n_fpos   += readsize;
+      bytesread    += readsize;
+      buffer       += readsize;
+
+      /* Check if we hit the end of file */
+
+      if (read_response->read.hdr.eof != 0)
+        {
+          break;
+        }
+    }
+
+  nfs_mux_release(nmp);
+  return bytesread;
 
 errout_with_mutex:
   nfs_mux_release(nmp);
@@ -2725,6 +3079,8 @@ struct VnodeOps nfs_vops =
   .Rename = vfs_nfs_rename,
   .Mkdir = vfs_nfs_mkdir,
   .Create = vfs_nfs_create,
+  .ReadPage = vfs_nfs_readpage,
+  .WritePage = vfs_nfs_writepage,
   .Unlink =  vfs_nfs_unlink,
   .Rmdir = vfs_nfs_rmdir,
   .Reclaim = vfs_nfs_reclaim,

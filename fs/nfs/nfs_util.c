@@ -563,7 +563,8 @@ void nfs_attrupdate(struct nfsnode *np, struct nfs_fattr *attributes)
   np->n_size   = fxdr_hyper(&attributes->fa_size);
 
   fxdr_nfsv3time(&attributes->fa_mtime, &ts);
-  np->n_mtime  = ts.tv_sec;
+  np->n_timestamp.tv_sec = ts.tv_sec;
+  np->n_timestamp.tv_nsec = ts.tv_nsec;
 
   fxdr_nfsv3time(&attributes->fa_ctime, &ts);
   np->n_ctime  = ts.tv_sec;

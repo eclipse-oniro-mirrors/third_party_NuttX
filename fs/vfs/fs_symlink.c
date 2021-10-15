@@ -37,13 +37,12 @@ int follow_symlink(int dirfd, const char *path, struct Vnode **vnode, char **ful
 {
   int ret;
   struct Vnode *newvnode = NULL;
-  char pathname[PATH_MAX] = {0};
+  char *pathname = (char *)path;
+  char buffer[PATH_MAX] = {0};
 
   if (path == NULL) {
       return -EINVAL;
   }
-
-  (void)strcpy_s(pathname, PATH_MAX, path);
 
   for (int i = 0; i < CONFIG_FS_MAX_LNK_CNT; i++)
     {
@@ -59,7 +58,7 @@ int follow_symlink(int dirfd, const char *path, struct Vnode **vnode, char **ful
           return ret;
         }
 
-      ret = VnodeLookup(*fullpath, &newvnode, 0);
+      ret = VnodeLookupFullpath(*fullpath, &newvnode, 0);
       if (ret != OK)
         {
           /* The object of fullpath is not exist. Return its parent's vnode. */
@@ -79,7 +78,7 @@ int follow_symlink(int dirfd, const char *path, struct Vnode **vnode, char **ful
         }
 
       /* The object of fullpath is a symbol link. Read its target and find the source file successively. */
-      (void)memset_s(pathname, PATH_MAX, 0, PATH_MAX);
+      pathname = buffer;
       ret = newvnode->vop->Readlink(newvnode, pathname, PATH_MAX);
       if (ret < 0)
         {

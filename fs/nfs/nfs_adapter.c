@@ -321,7 +321,8 @@ static int vfs_nfs_stat_internal(struct nfsmount *nmp, struct nfsnode *nfs_node)
   /* Extract time values as type time_t in units of seconds */
 
   fxdr_nfsv3time(&attr_reply.attr.fa_mtime, &ts);
-  nfs_node->n_mtime = ts.tv_sec;
+  nfs_node->n_timestamp.tv_sec = ts.tv_sec;
+  nfs_node->n_timestamp.tv_nsec = ts.tv_nsec;
 
   fxdr_nfsv3time(&attr_reply.attr.fa_atime, &ts);
   nfs_node->n_atime = ts.tv_sec;
@@ -907,12 +908,12 @@ int vfs_nfs_stat(struct Vnode *node, struct stat *buf)
   buf->st_size    = (off_t)nfs_node->n_size;
   buf->st_blksize = 0;
   buf->st_blocks  = 0;
-  buf->st_mtime   = nfs_node->n_mtime;
+  buf->st_mtime   = nfs_node->n_timestamp.tv_sec;
   buf->st_atime   = nfs_node->n_atime;
   buf->st_ctime   = nfs_node->n_ctime;
 
   /* Adapt to kstat member "long tv_sec" */
-  buf->__st_mtim32.tv_sec   = (long)nfs_node->n_mtime;
+  buf->__st_mtim32.tv_sec   = (long)nfs_node->n_timestamp.tv_sec;
   buf->__st_atim32.tv_sec   = (long)nfs_node->n_atime;
   buf->__st_ctim32.tv_sec   = (long)nfs_node->n_ctime;
 
@@ -3063,6 +3064,61 @@ errout_with_mutex:
   return -error;
 }
 
+static int nfs_check_timestamp(struct timespec *origin, struct timespec *new)
+{
+  return (origin->tv_sec == new->tv_sec) && (origin->tv_nsec == new->tv_nsec);
+}
+
+static int vfs_nfs_open(struct file *filep)
+{
+  int ret;
+  struct timespec ts;
+  struct rpc_call_fs attr_call;
+  struct rpc_reply_getattr attr_reply;
+  struct Vnode *node = filep->f_vnode;
+  struct nfsnode *nfs_node = NULL;
+  struct nfsmount *nmp = (struct nfsmount *)(node->originMount->data);
+  struct file_handle parent_fhandle = {0};
+
+  nfs_mux_take(nmp);
+  nfs_node = (struct nfsnode *)node->data;
+  attr_call.fs.fsroot.length = txdr_unsigned(nfs_node->n_fhsize);
+  memcpy_s(&(attr_call.fs.fsroot.handle), sizeof(nfsfh_t), &(nfs_node->n_fhandle), sizeof(nfsfh_t));
+
+  ret = nfs_request(nmp, NFSPROC_GETATTR, &attr_call,
+      sizeof(struct file_handle), &attr_reply,
+      sizeof(struct rpc_reply_getattr));
+  if (ret != OK)
+    {
+      if (ret == NFSERR_STALE)
+      {
+        /* If the file handle is stale, update it */
+        OsFileCacheRemove(&(node->mapping));
+        parent_fhandle.length = ((struct nfsnode *)node->parent->data)->n_fhsize;
+        memcpy_s(&(parent_fhandle.handle), parent_fhandle.length,
+            &(((struct nfsnode *)node->parent->data)->n_fhandle),
+            ((struct nfsnode *)node->parent->data)->n_fhsize);
+        ret = nfs_fileupdate(nmp, nfs_node->n_name, &parent_fhandle, nfs_node);
+      }
+      nfs_mux_release(nmp);
+      return ret;
+    }
+
+  /* Extract time values as timestamp */
+
+  fxdr_nfsv3time(&attr_reply.attr.fa_mtime, &ts);
+  if (!nfs_check_timestamp(&(nfs_node->n_timestamp), &ts))
+    {
+      OsFileCacheRemove(&(node->mapping));
+      nfs_node->n_timestamp.tv_sec = ts.tv_sec;
+      nfs_node->n_timestamp.tv_nsec = ts.tv_nsec;
+    }
+
+  nfs_mux_release(nmp);
+
+  return OK;
+}
+
 struct MountOps nfs_mount_operations =
 {
   .Mount = vfs_nfs_mount,
@@ -3092,6 +3148,7 @@ struct VnodeOps nfs_vops =
 
 struct file_operations_vfs nfs_fops =
 {
+  .open = vfs_nfs_open,
   .seek = vfs_nfs_seek,
   .write = vfs_nfs_write,
   .read = vfs_nfs_read,

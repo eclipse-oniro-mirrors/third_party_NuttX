@@ -82,8 +82,8 @@ struct nfsnode
   uint8_t            n_flags;       /* Node flags */
   uint16_t           n_mode;        /* File mode for fstat() */
   time_t             n_atime;       /* File access time */
-  time_t             n_mtime;       /* File modification time */
   time_t             n_ctime;       /* File creation time */
+  struct timespec    n_timestamp;   /* Timestamp (modification time) */
   nfsfh_t            n_fhandle;     /* NFS File Handle */
   uint64_t           n_size;        /* Current size of file */
   int                n_oflags;      /* Flags provided when file was opened */

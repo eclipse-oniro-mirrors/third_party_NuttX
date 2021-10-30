@@ -48,6 +48,7 @@
 #endif
 
 #include "mqueue.h"
+#include "epoll.h"
 #include "fs/file.h"
 
 /****************************************************************************
@@ -102,6 +103,11 @@ int close(int fd)
           (unsigned int)fd < (unsigned int)(MQUEUE_FD_OFFSET + CONFIG_NQUEUE_DESCRIPTORS))
         {
           return mq_close((mqd_t)fd);
+        }
+      if ((unsigned int)fd >= EPOLL_FD_OFFSET && \
+          (unsigned int)fd < (unsigned int)(EPOLL_FD_OFFSET + CONFIG_EPOLL_DESCRIPTORS))
+        {
+          return epoll_close(fd);
         }
 #endif
       else

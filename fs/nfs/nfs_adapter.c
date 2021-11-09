@@ -825,6 +825,7 @@ int vfs_nfs_mount(struct Mount *mnt, struct Vnode *device, const void *data)
   vp->data = root;
   root->n_fhsize = nmp->nm_fhsize;
   (void)memcpy_s(&(root->n_fhandle), root->n_fhsize, &(nmp->nm_fh), nmp->nm_fhsize);
+  root->n_pfhsize = 0;
   mnt->vnodeCovered = vp;
   mnt->data = nmp;
   root->n_next = nmp->nm_head;
@@ -875,6 +876,8 @@ int vfs_nfs_lookup(struct Vnode *parent, const char *path, int len, struct Vnode
   nfs_node = zalloc(sizeof(struct nfsnode));
   nfs_node->n_fhsize = (uint8_t)fhandle.length;
   memcpy_s(&(nfs_node->n_fhandle), nfs_node->n_fhsize, &(fhandle.handle), fhandle.length);
+  nfs_node->n_pfhsize = parent_nfs_node->n_fhsize;
+  (void)memcpy_s(&(nfs_node->n_pfhandle), NFSX_V3FHMAX, &(parent_nfs_node->n_fhandle), parent_nfs_node->n_fhsize);
   nfs_node->n_name = zalloc(sizeof(filename));
   memcpy_s(nfs_node->n_name, (len + 1), filename, sizeof(filename));
   nfs_node->n_next = nmp->nm_head;
@@ -1524,6 +1527,8 @@ int vfs_nfs_mkdir(struct Vnode *parent, const char *dirname, mode_t mode, struct
   target_node = zalloc(sizeof(struct nfsnode));
   target_node->n_fhsize = (uint8_t)fhandle.length;
   memcpy_s(&(target_node->n_fhandle), target_node->n_fhsize, &(fhandle.handle), fhandle.length);
+  target_node->n_pfhsize = parent_nfs_node->n_fhsize;
+  (void)memcpy_s(&(target_node->n_pfhandle), NFSX_V3FHMAX, &(parent_nfs_node->n_fhandle), parent_nfs_node->n_fhsize);
   target_node->n_name = zalloc(sizeof (dirname));
   memcpy_s(target_node->n_name, sizeof(dirname), dirname, sizeof (dirname));
   target_node->n_next = nmp->nm_head;
@@ -1577,10 +1582,10 @@ int vfs_nfs_write(struct file *filep, const char *buffer, size_t buflen)
       goto errout_with_mutex;
     }
 
-  parent_fhandle.length = ((struct nfsnode *)node->parent->data)->n_fhsize;
-  memcpy_s(&(parent_fhandle.handle), parent_fhandle.length,
-      &(((struct nfsnode *)node->parent->data)->n_fhandle),
-      ((struct nfsnode *)node->parent->data)->n_fhsize);
+  parent_fhandle.length = ((struct nfsnode *)node->data)->n_pfhsize;
+  (void)memcpy_s(&(parent_fhandle.handle), NFSX_V3FHMAX,
+      &(((struct nfsnode *)node->data)->n_pfhandle),
+      ((struct nfsnode *)node->data)->n_pfhsize);
 
   if (filep->f_oflags & O_APPEND)
     {
@@ -1795,10 +1800,10 @@ ssize_t vfs_nfs_writepage(struct Vnode *node, char *buffer, off_t pos, size_t bu
       goto errout_with_mutex;
     }
 
-  parent_fhandle.length = ((struct nfsnode *)node->parent->data)->n_fhsize;
-  memcpy_s(&(parent_fhandle.handle), parent_fhandle.length,
-      &(((struct nfsnode *)node->parent->data)->n_fhandle),
-      ((struct nfsnode *)node->parent->data)->n_fhsize);
+  parent_fhandle.length = ((struct nfsnode *)node->data)->n_pfhsize;
+  (void)memcpy_s(&(parent_fhandle.handle), NFSX_V3FHMAX,
+      &(((struct nfsnode *)node->data)->n_pfhandle),
+      ((struct nfsnode *)node->data)->n_pfhsize);
 
   /* Check if the file size would exceed the range of off_t */
 
@@ -2067,10 +2072,10 @@ ssize_t vfs_nfs_readpage(struct Vnode *node, char *buffer, off_t pos)
     }
 
 
-  parent_fhandle.length = ((struct nfsnode *)node->parent->data)->n_fhsize;
-  memcpy_s(&(parent_fhandle.handle), parent_fhandle.length,
-      &(((struct nfsnode *)node->parent->data)->n_fhandle),
-      ((struct nfsnode *)node->parent->data)->n_fhsize);
+  parent_fhandle.length = ((struct nfsnode *)node->data)->n_pfhsize;
+  (void)memcpy_s(&(parent_fhandle.handle), NFSX_V3FHMAX,
+      &(((struct nfsnode *)node->data)->n_pfhandle),
+      ((struct nfsnode *)node->data)->n_pfhsize);
   error = nfs_fileupdate(nmp, np->n_name, &parent_fhandle, np);
   if (error != OK)
     {
@@ -2218,10 +2223,10 @@ ssize_t vfs_nfs_read(struct file *filep, char *buffer, size_t buflen)
     }
 
 
-  parent_fhandle.length = ((struct nfsnode *)node->parent->data)->n_fhsize;
-  memcpy_s(&(parent_fhandle.handle), parent_fhandle.length,
-      &(((struct nfsnode *)node->parent->data)->n_fhandle),
-      ((struct nfsnode *)node->parent->data)->n_fhsize);
+  parent_fhandle.length = ((struct nfsnode *)node->data)->n_pfhsize;
+  (void)memcpy_s(&(parent_fhandle.handle), NFSX_V3FHMAX,
+      &(((struct nfsnode *)node->data)->n_pfhandle),
+      ((struct nfsnode *)node->data)->n_pfhsize);
   error = nfs_fileupdate(nmp, np->n_name, &parent_fhandle, np);
   if (error != OK)
     {
@@ -2497,6 +2502,9 @@ int vfs_nfs_create(struct Vnode *parent, const char *filename, int mode, struct 
 
   np->n_next   = nmp->nm_head;
   nmp->nm_head = np;
+
+  np->n_pfhsize     = parent_nfs_node->n_fhsize;
+  (void)memcpy_s(&(np->n_pfhandle), NFSX_V3FHMAX, &(parent_nfs_node->n_fhandle), parent_nfs_node->n_fhsize);
 
   np->n_flags |= (NFSNODE_OPEN | NFSNODE_MODIFIED);
   np->n_name = zalloc(namelen + 1);

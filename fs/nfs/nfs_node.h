@@ -79,12 +79,14 @@ struct nfsnode
   uint8_t            n_crefs;       /* Reference count (for nfs_dup) */
   uint8_t            n_type;        /* File type */
   uint8_t            n_fhsize;      /* Size in bytes of the file handle */
+  uint8_t            n_pfhsize;     /* Size in bytes of the file handle of parent */
   uint8_t            n_flags;       /* Node flags */
   uint16_t           n_mode;        /* File mode for fstat() */
   time_t             n_atime;       /* File access time */
   time_t             n_ctime;       /* File creation time */
   struct timespec    n_timestamp;   /* Timestamp (modification time) */
   nfsfh_t            n_fhandle;     /* NFS File Handle */
+  nfsfh_t            n_pfhandle;    /* NFS File Handle of parent */
   uint64_t           n_size;        /* Current size of file */
   int                n_oflags;      /* Flags provided when file was opened */
   loff_t             n_fpos;        /* NFS File position */

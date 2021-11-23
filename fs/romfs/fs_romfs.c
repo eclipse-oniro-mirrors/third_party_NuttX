@@ -350,6 +350,7 @@ static ssize_t romfs_readpage(struct Vnode *vnode, char *buffer, off_t off)
       buflen = bytesleft;
     }
 
+  off = rf->rf_startoffset + off;
   LOS_CopyFromKernel(buffer, buflen, &rm->rm_buffer[off], buflen);
 
   romfs_semgive(rm);

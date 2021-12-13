@@ -48,6 +48,7 @@
 #include <fs/fs.h>
 
 #include "pipe_common.h"
+#include "inode/inode.h"
 #include "stdio.h"
 #if CONFIG_DEV_PIPE_SIZE > 0
 
@@ -226,109 +227,149 @@ static int pipe_unlink(FAR struct inode *priv)
  *
  ****************************************************************************/
 
+static void UpdateDev(struct pipe_dev_s *dev)
+{
+    FAR struct inode *node;
+    struct pipe_dev_s *olddev = NULL;
+
+    struct inode_search_s desc;
+    SETUP_SEARCH(&desc, dev->name, fasle);
+    FAR const char *path = desc.path;
+    FAR const char **relpath = &(desc.relpath);
+    FAR struct inode **peer = &(desc.peer);
+    FAR struct inode **parent = &(desc.parent);
+
+    inode_semtake();
+    desc.node = inode_search(&path, peer, parent, relpath);
+    if (desc.node == NULL)
+    {
+        inode_semgive();
+        PRINT_ERR("[%s,%d] failed.\n", __FUNCTION__, __LINE__);
+        return;
+    }
+    node = desc.node;
+    olddev = (struct pipe_dev_s *)node->i_private;
+    if (olddev != NULL)
+    {
+        if (olddev->d_buffer != NULL)
+        {
+            free(olddev->d_buffer);
+            olddev->d_buffer = NULL;
+        }
+        pipecommon_freedev(olddev);
+    }
+    node->i_private = dev;
+    inode_semgive();
+    return;
+}
+
 int pipe(int fd[2])
 {
-  FAR struct pipe_dev_s *dev = NULL;
-  char devname[16];
-  int pipeno;
-  int errcode;
-  int ret;
-  size_t bufsize = 1024;
+    FAR struct pipe_dev_s *dev = NULL;
+    char devname[16];
+    int pipeno;
+    int errcode;
+    int ret;
+    size_t bufsize = 1024;
 
-  /* Get exclusive access to the pipe allocation data */
+    /* Get exclusive access to the pipe allocation data */
 
-  ret = sem_wait(&g_pipesem);
-  if (ret < 0)
+    ret = sem_wait(&g_pipesem);
+    if (ret < 0)
     {
-      errcode = -ret;
-      goto errout;
+        errcode = -ret;
+        goto errout;
     }
 
-  /* Allocate a minor number for the pipe device */
+    /* Allocate a minor number for the pipe device */
 
-  pipeno = pipe_allocate();
-  if (pipeno < 0)
+    pipeno = pipe_allocate();
+    if (pipeno < 0)
     {
-      (void)sem_post(&g_pipesem);
-      errcode = -pipeno;
-      goto errout;
+        (void)sem_post(&g_pipesem);
+        errcode = -pipeno;
+        goto errout;
     }
 
-  /* Create a pathname to the pipe device */
+    /* Create a pathname to the pipe device */
 
-  snprintf_s(devname, sizeof(devname), sizeof(devname) - 1, "/dev/pipe%d", pipeno);
+    snprintf_s(devname, sizeof(devname), sizeof(devname) - 1, "/dev/pipe%d", pipeno);
 
-  /* Check if the pipe device has already been created */
+    /* No.. Allocate and initialize a new device structure instance */
 
-  if ((g_pipecreated & (1 << pipeno)) == 0)
+    dev = pipecommon_allocdev(bufsize, devname);
+    if (!dev)
     {
-      /* No.. Allocate and initialize a new device structure instance */
+        (void)sem_post(&g_pipesem);
+        errcode = ENOMEM;
+        goto errout_with_pipe;
+    }
 
-      dev = pipecommon_allocdev(bufsize, devname);
-      if (!dev)
+    dev->d_pipeno = pipeno;
+
+    /* Check if the pipe device has already been created */
+
+    if ((g_pipecreated & (1 << pipeno)) == 0)
+    {
+        /* Register the pipe device */
+
+        ret = register_driver(devname, &pipe_fops, 0660, (FAR void *)dev);
+        if (ret != 0)
         {
-          (void)sem_post(&g_pipesem);
-          errcode = ENOMEM;
-          goto errout_with_pipe;
+            (void)sem_post(&g_pipesem);
+            errcode = -ret;
+            goto errout_with_dev;
         }
 
-      dev->d_pipeno = pipeno;
+        /* Remember that we created this device */
 
-      /* Register the pipe device */
-
-      ret = register_driver(devname, &pipe_fops, 0660, (FAR void *)dev);
-      if (ret != 0)
-        {
-          (void)sem_post(&g_pipesem);
-          errcode = -ret;
-          goto errout_with_dev;
-        }
-
-      /* Remember that we created this device */
-
-       g_pipecreated |= (1 << pipeno);
+        g_pipecreated |= (1 << pipeno);
     }
-
-  (void)sem_post(&g_pipesem);
-
-  /* Get a write file descriptor */
-
-  fd[1] = open(devname, O_WRONLY);
-  if (fd[1] < 0)
+    else
     {
-      errcode = -fd[1];
-      goto errout_with_driver;
+        UpdateDev(dev);
     }
 
-  /* Get a read file descriptor */
+    (void)sem_post(&g_pipesem);
 
-  fd[0] = open(devname, O_RDONLY);
-  if (fd[0] < 0)
+    /* Get a write file descriptor */
+
+    fd[1] = open(devname, O_WRONLY);
+    if (fd[1] < 0)
     {
-      errcode = -fd[0];
-      goto errout_with_wrfd;
+        errcode = -fd[1];
+        goto errout_with_driver;
     }
 
-  return OK;
+    /* Get a read file descriptor */
+
+    fd[0] = open(devname, O_RDONLY);
+    if (fd[0] < 0)
+    {
+        errcode = -fd[0];
+        goto errout_with_wrfd;
+    }
+
+    return OK;
 
 errout_with_wrfd:
-  close(fd[1]);
+    close(fd[1]);
 
 errout_with_driver:
-  unregister_driver(devname);
+    unregister_driver(devname);
 
 errout_with_dev:
-  if (dev)
+    if (dev)
     {
-      pipecommon_freedev(dev);
+        pipecommon_freedev(dev);
     }
 
 errout_with_pipe:
-  pipe_free(pipeno);
+    pipe_free(pipeno);
 
 errout:
-  set_errno(errcode);
-  return VFS_ERROR;
+    set_errno(errcode);
+    return VFS_ERROR;
 }
 
 int pipe_init()

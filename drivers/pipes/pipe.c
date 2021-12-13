@@ -354,9 +354,9 @@ int pipe(int fd[2])
 
 errout_with_wrfd:
   close(fd[1]);
+
 errout_with_driver:
   unregister_driver(devname);
-
 
 errout_with_dev:
   if (dev)

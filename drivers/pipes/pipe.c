@@ -48,6 +48,7 @@
 #include <fs/fs.h>
 
 #include "pipe_common.h"
+#include "inode/inode.h"
 #include "stdio.h"
 #if CONFIG_DEV_PIPE_SIZE > 0
 
@@ -226,6 +227,42 @@ static int pipe_unlink(FAR struct inode *priv)
  *
  ****************************************************************************/
 
+static void UpdateDev(struct pipe_dev_s *dev)
+{
+    FAR struct inode *node;
+    struct pipe_dev_s *olddev = NULL;
+
+    struct inode_search_s desc;
+    SETUP_SEARCH(&desc, dev->name, fasle);
+    FAR const char *path = desc.path;
+    FAR const char **relpath = &(desc.relpath);
+    FAR struct inode **peer = &(desc.peer);
+    FAR struct inode **parent = &(desc.parent);
+
+    inode_semtake();
+    desc.node = inode_search(&path, peer, parent, relpath);
+    if (desc.node == NULL)
+    {
+        inode_semgive();
+        PRINT_ERR("[%s,%d] failed.\n", __FUNCTION__, __LINE__);
+        return;
+    }
+    node = desc.node;
+    olddev = (struct pipe_dev_s *)node->i_private;
+    if (olddev != NULL)
+    {
+        if (olddev->d_buffer != NULL)
+        {
+            free(olddev->d_buffer);
+            olddev->d_buffer = NULL;
+        }
+        pipecommon_freedev(olddev);
+    }
+    node->i_private = dev;
+    inode_semgive();
+    return;
+}
+
 int pipe(int fd[2])
 {
   FAR struct pipe_dev_s *dev = NULL;
@@ -258,10 +295,6 @@ int pipe(int fd[2])
 
   snprintf_s(devname, sizeof(devname), sizeof(devname) - 1, "/dev/pipe%d", pipeno);
 
-  /* Check if the pipe device has already been created */
-
-  if ((g_pipecreated & (1 << pipeno)) == 0)
-    {
       /* No.. Allocate and initialize a new device structure instance */
 
       dev = pipecommon_allocdev(bufsize, devname);
@@ -274,7 +307,10 @@ int pipe(int fd[2])
 
       dev->d_pipeno = pipeno;
 
-      /* Register the pipe device */
+  /* Check if the pipe device has already been created */
+    if ((g_pipecreated & (1 << pipeno)) == 0)
+    {
+        /* Register the pipe device */
 
       ret = register_driver(devname, &pipe_fops, 0660, (FAR void *)dev);
       if (ret != 0)
@@ -288,6 +324,11 @@ int pipe(int fd[2])
 
        g_pipecreated |= (1 << pipeno);
     }
+    else
+    {
+        UpdateDev(dev);
+    }
+
 
   (void)sem_post(&g_pipesem);
 

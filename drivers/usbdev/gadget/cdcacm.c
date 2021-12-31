@@ -912,7 +912,7 @@ static void cdcacm_rdcomplete(FAR struct usbdev_ep_s *ep,
 
   /* Magic key */
 
-  if (CheckMagicKey(*(char *)req->buf))
+  if (CheckMagicKey(*(char *)req->buf, CONSOLE_SERIAL))
     {
       atomic_set(&g_magickey, 1);
       (void)cdcacm_recvpacket(priv, rdcontainer);
